@@ -626,189 +626,173 @@ async function fetchPrices() {
   }
 }
 
-// ---------- BLACK MARKET ROUTES ----------
+// ---------- TRADING ROUTES ----------
 
-const BM_ROUTE_META = {
-  "Bridgewatch":   { travelMin: 12, risk: "High",   riskScore: 3, riskColor: "#f87171", riskBg: "rgba(248,113,113,0.08)", path: "Steppe Roads" },
-  "Lymhurst":      { travelMin: 18, risk: "Medium", riskScore: 2, riskColor: "#fbbf24", riskBg: "rgba(251,191,36,0.08)",  path: "Forest Roads" },
-  "Fort Sterling": { travelMin: 22, risk: "Low",    riskScore: 1, riskColor: "#4ade80", riskBg: "rgba(74,222,128,0.08)", path: "Mountain Roads" },
-  "Martlock":      { travelMin: 20, risk: "Low",    riskScore: 1, riskColor: "#4ade80", riskBg: "rgba(74,222,128,0.08)", path: "Highland Roads" },
-  "Thetford":      { travelMin: 13, risk: "High",   riskScore: 3, riskColor: "#f87171", riskBg: "rgba(248,113,113,0.08)", path: "Swamp Roads" },
-  "Brecilien":     { travelMin: 25, risk: "Medium", riskScore: 2, riskColor: "#fbbf24", riskBg: "rgba(251,191,36,0.08)",  path: "Mists" },
-};
+const DANGER_CITIES = ["Caerleon", "Bridgewatch", "Lymhurst", "Fort Sterling", "Martlock", "Thetford", "Brecilien", "Black Market"];
+const SAFE_CITIES   = ["Bridgewatch", "Lymhurst", "Fort Sterling", "Martlock", "Thetford", "Brecilien"];
 
-function renderBlackMarketRoutes(allRows) {
+function renderTradingRoutes(allRows) {
   const section = document.getElementById("bmRoutesSection");
   const host    = document.getElementById("bmRoutesContent");
   if (!section || !host) return;
 
-  // Best Black Market buy order
-  const bmRows = allRows.filter(r => r.city === "Black Market" && r.buy_price_max > 0);
-  const bmBest = bmRows.reduce((a, b) => (!a || b.buy_price_max > a.buy_price_max ? b : a), null);
+  // Build per-city price summaries for a given city list
+  function buildCityData(cities) {
+    return cities.map(city => {
+      const rows     = allRows.filter(r => r.city === city);
+      const sellRows = rows.filter(r => r.sell_price_min > 0);
+      const buyRows  = rows.filter(r => r.buy_price_max  > 0);
+      const bestSell = sellRows.reduce((a, b) => !a || b.sell_price_min < a.sell_price_min ? b : a, null);
+      const bestBuy  = buyRows.reduce((a, b)  => !a || b.buy_price_max  > a.buy_price_max  ? b : a, null);
+      return { city, bestSell, bestBuy, meta: CITY_META[city] || {} };
+    }).filter(d => d.bestSell || d.bestBuy);
+  }
 
-  if (!bmBest) { section.classList.add("hidden"); return; }
-  section.classList.remove("hidden");
+  // Find the single best flip route: cheapest buy city → highest buy-order sell city
+  function findBestRoute(cityData) {
+    let buySource = null, sellDest = null;
+    for (const d of cityData) {
+      if (d.bestSell && (!buySource || d.bestSell.sell_price_min < buySource.bestSell.sell_price_min))
+        buySource = d;
+      if (d.bestBuy && (!sellDest || d.bestBuy.buy_price_max > sellDest.bestBuy.buy_price_max))
+        sellDest = d;
+    }
+    if (!buySource || !sellDest || buySource.city === sellDest.city) return null;
+    const buyPrice  = buySource.bestSell.sell_price_min;
+    const sellPrice = sellDest.bestBuy.buy_price_max;
+    if (sellPrice <= buyPrice) return null;
+    const profit = sellPrice - buyPrice;
+    const roi    = +(profit / buyPrice * 100).toFixed(1);
+    return { buyCity: buySource.city, sellCity: sellDest.city,
+             buyPrice, sellPrice, profit, roi,
+             buyMeta: buySource.meta, sellMeta: sellDest.meta };
+  }
 
-  const bmPrice = bmBest.buy_price_max;
-  const royalCities = ["Bridgewatch", "Lymhurst", "Fort Sterling", "Martlock", "Thetford", "Brecilien"];
+  // Render the featured route card
+  function routeCard(route, label, icon, accentColor, accentBg) {
+    if (!route) return `<div class="bg-surface border border-border rounded-2xl p-6 flex items-center justify-center text-slate-600 text-sm italic">No profitable route found</div>`;
+    const roiCls = route.roi > 40 ? "text-green-400" : route.roi > 20 ? "text-yellow-400" : "text-slate-400";
+    return `
+      <div class="rounded-2xl p-5 border-2" style="background:${accentBg};border-color:${accentColor}55">
+        <div class="text-xs font-black uppercase tracking-widest mb-1" style="color:${accentColor}">${icon} ${label}</div>
+        <div class="text-base font-bold text-slate-100 mb-0.5">
+          <span style="color:${route.buyMeta.color||'#e2e8f0'}">${route.buyCity}</span>
+          <span class="text-slate-500 mx-2">→</span>
+          <span style="color:${route.sellMeta.color||'#e2e8f0'}">${route.sellCity}</span>
+        </div>
+        <div class="text-3xl font-black text-green-400 mt-3 leading-tight">
+          +${fmt(route.profit)}<span class="text-base font-normal text-slate-500 ml-1">s profit</span>
+        </div>
+        <div class="text-sm font-semibold mt-1 ${roiCls}">${route.roi}% ROI</div>
+        <div class="flex items-stretch gap-2 mt-4">
+          <div class="flex-1 bg-[rgba(0,0,0,0.25)] rounded-xl p-3 text-center">
+            <div class="text-xs text-slate-500 mb-1">Buy in</div>
+            <div class="text-xs font-bold mb-1" style="color:${route.buyMeta.color||'#e2e8f0'}">${route.buyCity}</div>
+            <div class="text-lg font-black text-slate-100">${fmt(route.buyPrice)}<span class="text-xs text-slate-500 ml-0.5">s</span></div>
+          </div>
+          <div class="flex items-center justify-center px-1 text-slate-600 text-xl font-bold">→</div>
+          <div class="flex-1 bg-[rgba(0,0,0,0.25)] rounded-xl p-3 text-center">
+            <div class="text-xs text-slate-500 mb-1">Sell in</div>
+            <div class="text-xs font-bold mb-1" style="color:${route.sellMeta.color||'#e2e8f0'}">${route.sellCity}</div>
+            <div class="text-lg font-black text-albion">${fmt(route.sellPrice)}<span class="text-xs text-slate-500 ml-0.5">s</span></div>
+          </div>
+        </div>
+      </div>`;
+  }
 
-  // Build routes
-  const routes = royalCities.map(city => {
-    const meta     = BM_ROUTE_META[city];
-    const cityMeta = CITY_META[city] || {};
-    const cityRows = allRows.filter(r => r.city === city && r.sell_price_min > 0);
-    const cheapest = cityRows.reduce((a, b) => (!a || b.sell_price_min < a.sell_price_min ? b : a), null);
-    if (!cheapest) return null;
+  // Render a city comparison table for a category
+  function cityTable(cityData, bestBuyCity, bestSellCity) {
+    const rows = cityData.map(d => {
+      const sellP  = d.bestSell?.sell_price_min || 0;
+      const buyP   = d.bestBuy?.buy_price_max   || 0;
+      const spread = (buyP > 0 && sellP > 0) ? buyP - sellP : null;
+      const isBestBuy  = d.city === bestBuyCity;
+      const isBestSell = d.city === bestSellCity;
+      const badge = isBestBuy
+        ? `<span class="badge badge-green ml-1">Buy Here</span>`
+        : isBestSell
+          ? `<span class="badge badge-red ml-1">Sell Here</span>`
+          : "";
+      const roiCls = spread !== null ? (spread > 0 ? "text-green-400 font-semibold" : "text-red-400") : "text-slate-600";
+      return `<tr class="border-b border-[#141c28] hover:bg-[rgba(255,255,255,0.015)]">
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${d.meta.color||'#546e7a'}"></span>
+            <span class="font-semibold text-sm" style="color:${d.meta.color||'#e2e8f0'}">${d.city}</span>
+            ${badge}
+          </div>
+        </td>
+        <td class="text-right px-4 py-3 font-mono text-sm ${isBestBuy  ? 'text-green-400 font-bold' : 'text-slate-300'}">${sellP > 0 ? fmt(sellP) : '—'}</td>
+        <td class="text-right px-4 py-3 font-mono text-sm ${isBestSell ? 'text-albion  font-bold' : 'text-slate-300'}">${buyP > 0  ? fmt(buyP)  : '—'}</td>
+        <td class="text-right px-4 py-3 text-sm ${roiCls}">${spread !== null ? (spread > 0 ? '+' : '') + fmt(spread) : '—'}</td>
+      </tr>`;
+    }).join("");
 
-    const buyPrice     = cheapest.sell_price_min;
-    const profit       = bmPrice - buyPrice;
-    const roi          = bmPrice > 0 ? (profit / bmPrice * 100) : 0;
-    const profitPerMin = meta.travelMin > 0 ? profit / meta.travelMin : 0;
-    const efficiency   = profitPerMin / meta.riskScore; // penalise by risk
-    return { city, meta, cityMeta, buyPrice, profit, roi, profitPerMin, efficiency, sellAge: cheapest.sell_price_min_date, quality: cheapest.quality };
-  }).filter(r => r && r.profit > 0).sort((a, b) => b.profit - a.profit);
-
-  if (!routes.length) { section.classList.add("hidden"); return; }
-
-  // Danger's Way = highest raw profit
-  const dangersWay = routes[0];
-  // Safe Way = best efficiency among Low/Medium risk (riskScore ≤ 2), never the same as Danger's Way
-  const safeRoutes = routes.filter(r => r.meta.riskScore <= 2 && r !== dangersWay).sort((a, b) => b.efficiency - a.efficiency);
-  const safeWay    = safeRoutes[0] || null;
-
-  host.innerHTML = `
-    <div class="flex items-center gap-3 mb-4 flex-wrap">
-      <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">⚔ Black Market Routes</h3>
-      <span class="text-xs px-2.5 py-1 rounded-full bg-elevated border border-border text-slate-500">
-        BM Buy Order: <span class="text-albion font-semibold">${fmt(bmPrice)}s</span>
-      </span>
-    </div>
-
-    <!-- Two featured route cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
-      ${renderRouteCard(dangersWay, "Danger's Way", "#f87171", "rgba(248,113,113,0.09)", "🔴", bmPrice)}
-      ${safeWay
-        ? renderRouteCard(safeWay, "Safe Way", "#4ade80", "rgba(74,222,128,0.07)", "🟢", bmPrice)
-        : `<div class="bg-surface border border-border rounded-2xl p-6 flex items-center justify-center text-slate-600 text-sm">No safe route with positive profit</div>`}
-    </div>
-
-    <!-- Route comparison table -->
-    <div class="bg-surface border border-border rounded-2xl overflow-hidden">
-      <div class="px-4 py-3 border-b border-border flex items-center gap-3">
-        <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold">All Routes → Black Market</span>
-        <span class="text-xs text-slate-600">(Caerleon excluded · ranked by profit)</span>
-      </div>
+    return `
       <div class="overflow-x-auto">
-        <table class="w-full text-sm" style="min-width:700px">
+        <table class="w-full text-sm" style="min-width:480px">
           <thead>
             <tr class="border-b border-border bg-elevated">
               <th class="text-left px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">City</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Buy At</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Profit</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">ROI %</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Travel</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Risk</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Profit/min</th>
-              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Verdict</th>
+              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Sell Price (buy here)</th>
+              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Buy Order (sell here)</th>
+              <th class="text-right px-4 py-2.5 text-xs text-slate-500 uppercase tracking-wider">Spread</th>
             </tr>
           </thead>
-          <tbody>
-            ${routes.map(r => {
-              const isDanger = r === dangersWay;
-              const isSafe   = r === safeWay;
-              const badge    = isDanger
-                ? `<span class="badge badge-red ml-1">Danger's Way</span>`
-                : isSafe
-                  ? `<span class="badge badge-green ml-1">Safe Way</span>`
-                  : "";
-              const age = ageString(r.sellAge);
-              const roiCls = r.roi > 40 ? "text-green-400" : r.roi > 20 ? "text-yellow-400" : "text-slate-400";
-              const riskBars = [1,2,3].map(i =>
-                `<span class="inline-block h-1.5 w-4 rounded-full" style="background:${i <= r.meta.riskScore ? r.meta.riskColor : '#1e2a3a'}"></span>`
-              ).join("");
-              return `<tr class="border-b border-[#141c28] hover:bg-[rgba(255,255,255,0.015)]">
-                <td class="px-4 py-3">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${r.cityMeta.color||'#546e7a'}"></span>
-                    <span class="font-semibold" style="color:${r.cityMeta.color||'#e2e8f0'}">${r.city}</span>
-                    ${badge}
-                  </div>
-                  <div class="text-xs text-slate-600 mt-0.5 pl-4">${r.meta.path}</div>
-                </td>
-                <td class="text-right px-4 py-3 text-sm text-slate-300 font-mono">${fmt(r.buyPrice)}</td>
-                <td class="text-right px-4 py-3 text-sm font-bold text-green-400">+${fmt(r.profit)}</td>
-                <td class="text-right px-4 py-3 text-sm font-semibold ${roiCls}">${r.roi.toFixed(1)}%</td>
-                <td class="text-right px-4 py-3 text-xs text-slate-400">~${r.meta.travelMin}m</td>
-                <td class="text-right px-4 py-3">
-                  <div class="flex items-center justify-end gap-1">${riskBars}</div>
-                  <div class="text-xs font-semibold text-right mt-0.5" style="color:${r.meta.riskColor}">${r.meta.risk}</div>
-                </td>
-                <td class="text-right px-4 py-3 text-xs text-slate-400">${fmt(Math.round(r.profitPerMin))}/m</td>
-                <td class="text-right px-4 py-3 text-xs ${age.cls}">${age.text} ago</td>
-              </tr>`;
-            }).join("")}
-          </tbody>
+          <tbody>${rows}</tbody>
         </table>
+      </div>`;
+  }
+
+  const dangerData = buildCityData(DANGER_CITIES);
+  const safeData   = buildCityData(SAFE_CITIES);
+
+  if (!dangerData.length && !safeData.length) { section.classList.add("hidden"); return; }
+  section.classList.remove("hidden");
+
+  const dangerRoute = findBestRoute(dangerData);
+  const safeRoute   = findBestRoute(safeData);
+
+  host.innerHTML = `
+    <!-- Section title -->
+    <div class="flex items-center gap-3 mb-5">
+      <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">⚔ Trading Routes</h3>
+      <span class="text-xs text-slate-600">Live price comparison by city group</span>
+    </div>
+
+    <!-- ── DANGER'S WAY ── -->
+    <div class="mb-6 rounded-2xl border border-[#f87171]/20 bg-[rgba(248,113,113,0.04)] overflow-hidden">
+      <div class="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-[#f87171]/15">
+        <span class="text-base font-black uppercase tracking-widest text-[#f87171]">🔴 Danger's Way</span>
+        <span class="text-xs text-slate-500">All cities · includes Black Market &amp; Caerleon</span>
+      </div>
+      <div class="p-5">
+        <div class="mb-4">
+          ${routeCard(dangerRoute, "Best Route", "🔴", "#f87171", "rgba(248,113,113,0.07)")}
+        </div>
+        <div class="bg-surface border border-border rounded-xl overflow-hidden">
+          ${cityTable(dangerData, dangerRoute?.buyCity, dangerRoute?.sellCity)}
+        </div>
       </div>
     </div>
-    <p class="text-xs text-slate-700 mt-2">⚠ Travel times are estimates based on typical road distances. Risk reflects average PvP exposure per route.</p>
-  `;
-}
 
-function renderRouteCard(route, label, accentColor, accentBg, icon, bmPrice) {
-  if (!route) return "";
-  const age = ageString(route.sellAge);
-  const riskBars = [1,2,3].map(i =>
-    `<div class="h-2 w-6 rounded-full" style="background:${i <= route.meta.riskScore ? route.meta.riskColor : '#1e2a3a'}"></div>`
-  ).join("");
-
-  const roiCls = route.roi > 40 ? "text-green-400" : route.roi > 20 ? "text-yellow-400" : "text-slate-400";
-
-  return `
-    <div class="rounded-2xl p-5 border-2" style="background:${accentBg};border-color:${accentColor}55">
-
-      <!-- Card header -->
-      <div class="flex items-start justify-between mb-4">
-        <div>
-          <div class="text-xs font-black uppercase tracking-widest mb-0.5" style="color:${accentColor}">${icon} ${label}</div>
-          <div class="text-base font-bold text-slate-200">${route.city} → Black Market</div>
-          <div class="text-xs text-slate-500 mt-0.5">via ${route.meta.path} · ~${route.meta.travelMin} min</div>
-        </div>
-        <div class="text-right">
-          <div class="text-xs text-slate-500 mb-1">Risk Level</div>
-          <div class="flex gap-1 justify-end">${riskBars}</div>
-          <div class="text-xs font-bold mt-1" style="color:${route.meta.riskColor}">${route.meta.risk}</div>
-        </div>
+    <!-- ── SAFE WAY ── -->
+    <div class="mb-2 rounded-2xl border border-[#4ade80]/20 bg-[rgba(74,222,128,0.03)] overflow-hidden">
+      <div class="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-[#4ade80]/15">
+        <span class="text-base font-black uppercase tracking-widest text-[#4ade80]">🟢 Safe Way</span>
+        <span class="text-xs text-slate-500">Royal cities only · Black Market &amp; Caerleon excluded</span>
       </div>
-
-      <!-- Profit hero -->
-      <div class="text-4xl font-black text-green-400 leading-tight">+${fmt(route.profit)}<span class="text-base font-normal text-slate-500 ml-1">s</span></div>
-      <div class="flex gap-3 mt-1 mb-4">
-        <span class="text-sm font-semibold ${roiCls}">${route.roi.toFixed(1)}% ROI</span>
-        <span class="text-sm text-slate-500">${fmt(Math.round(route.profitPerMin))}/min</span>
-      </div>
-
-      <!-- Buy → Sell strip -->
-      <div class="flex items-stretch gap-2 mb-4">
-        <div class="flex-1 bg-[rgba(0,0,0,0.25)] rounded-xl p-3 text-center">
-          <div class="text-xs text-slate-500 mb-1">Buy in</div>
-          <div class="text-xs font-bold mb-1" style="color:${route.cityMeta.color||'#e2e8f0'}">${route.city}</div>
-          <div class="text-lg font-black text-slate-100">${fmt(route.buyPrice)}<span class="text-xs text-slate-500 ml-0.5">s</span></div>
+      <div class="p-5">
+        <div class="mb-4">
+          ${routeCard(safeRoute, "Best Route", "🟢", "#4ade80", "rgba(74,222,128,0.05)")}
         </div>
-        <div class="flex items-center justify-center px-1 text-slate-600 text-xl font-bold">→</div>
-        <div class="flex-1 bg-[rgba(0,0,0,0.25)] rounded-xl p-3 text-center">
-          <div class="text-xs text-slate-500 mb-1">Sell at</div>
-          <div class="text-xs font-bold text-slate-400 mb-1">Black Market</div>
-          <div class="text-lg font-black text-albion">${fmt(bmPrice)}<span class="text-xs text-slate-500 ml-0.5">s</span></div>
+        <div class="bg-surface border border-border rounded-xl overflow-hidden">
+          ${cityTable(safeData, safeRoute?.buyCity, safeRoute?.sellCity)}
         </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-between text-xs">
-        <span class="text-slate-600">Quality: ${QUALITY_LABEL[route.quality] || route.quality}</span>
-        <span class="${age.cls}">Data: ${age.text} ago</span>
       </div>
     </div>
+
+    <p class="text-xs text-slate-700 mt-3">⚠ Profit = Buy Order price − Sell Price. Always verify prices in-game before trading.</p>
   `;
 }
 
@@ -825,7 +809,7 @@ function render() {
   renderCityCards(rows);
   updateBest(rows);
   renderHeroInsights(rows);
-  renderBlackMarketRoutes(state.rows); // uses full rows (needs BM data regardless of city filter)
+  renderTradingRoutes(state.rows); // uses full rows (needs all city data regardless of city filter)
 }
 
 function renderTable(rows) {

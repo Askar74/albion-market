@@ -1,0 +1,593 @@
+/* ============================================================
+   Custom styles — Tailwind handles utilities, this covers
+   components that need CSS features Tailwind can't express.
+   ============================================================ */
+
+/* Scrollbar hide utility */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Thin custom scrollbar for dropdowns */
+.thin-scroll::-webkit-scrollbar { width: 4px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb { background: #1e2a3a; border-radius: 4px; }
+
+/* ===== SEARCH BOX focus ring ===== */
+#searchBox:focus-within {
+  border-color: rgba(229, 178, 93, 0.5);
+  box-shadow: 0 0 0 3px rgba(229, 178, 93, 0.08);
+}
+
+/* ===== SEARCH DROPDOWN ===== */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #0f1520;
+  border: 1px solid #1e2a3a;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 50;
+  max-height: 480px;
+  overflow-y: auto;
+  animation: slideDown 0.15s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.search-dropdown::-webkit-scrollbar { width: 4px; }
+.search-dropdown::-webkit-scrollbar-track { background: transparent; }
+.search-dropdown::-webkit-scrollbar-thumb { background: #1e2a3a; border-radius: 4px; }
+
+/* Dropdown sections */
+.dd-section { padding: 8px 0; }
+.dd-section + .dd-section { border-top: 1px solid #141c28; }
+
+.dd-label {
+  padding: 6px 14px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #4a5a6e;
+}
+
+/* Dropdown items */
+.dd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.dd-item:hover,
+.dd-item.active {
+  background: rgba(229, 178, 93, 0.06);
+}
+.dd-item.active { background: rgba(229, 178, 93, 0.09); }
+
+.dd-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #1e2a3a;
+  background: #171e2d;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.dd-info { flex: 1; min-width: 0; }
+.dd-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #d1dae6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-name mark {
+  background: none;
+  color: #e5b25d;
+  font-weight: 700;
+}
+.dd-meta {
+  font-size: 11px;
+  color: #4a5a6e;
+  font-family: ui-monospace, monospace;
+  margin-top: 1px;
+}
+.dd-meta mark { background: none; color: #7a8a9e; font-weight: 600; }
+
+.dd-badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.dd-arrow { color: #2a3a4e; font-size: 12px; flex-shrink: 0; margin-left: 4px; }
+.dd-item:hover .dd-arrow,
+.dd-item.active .dd-arrow { color: #e5b25d; }
+
+.dd-empty {
+  padding: 24px 20px;
+  text-align: center;
+  color: #4a5a6e;
+  font-size: 13px;
+}
+.dd-empty code {
+  background: #171e2d;
+  border: 1px solid #1e2a3a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: #8a9aae;
+}
+
+/* Recent item delete btn */
+.dd-remove {
+  color: #2a3a4e;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.dd-item:hover .dd-remove { color: #5a6a7e; }
+.dd-remove:hover { color: #f87171 !important; background: rgba(248,113,113,0.1); }
+
+/* ===== INSIGHT BADGES ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.badge-gold   { background: rgba(229,178,93,0.15);  color: #e5b25d;  border: 1px solid rgba(229,178,93,0.3); }
+.badge-green  { background: rgba(74,222,128,0.12);  color: #4ade80;  border: 1px solid rgba(74,222,128,0.25); }
+.badge-blue   { background: rgba(96,165,250,0.12);  color: #60a5fa;  border: 1px solid rgba(96,165,250,0.25); }
+.badge-purple { background: rgba(167,139,250,0.12); color: #a78bfa;  border: 1px solid rgba(167,139,250,0.25); }
+.badge-red    { background: rgba(248,113,113,0.12); color: #f87171;  border: 1px solid rgba(248,113,113,0.25); }
+.badge-slate  { background: rgba(100,116,139,0.15); color: #94a3b8;  border: 1px solid rgba(100,116,139,0.3); }
+.badge-orange { background: rgba(251,146,60,0.12);  color: #fb923c;  border: 1px solid rgba(251,146,60,0.25); }
+.badge-pink   { background: rgba(244,114,182,0.12); color: #f472b6;  border: 1px solid rgba(244,114,182,0.25); }
+
+/* ===== FILTER BAR ===== */
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #3a4a5e;
+  white-space: nowrap;
+}
+.filter-divider {
+  width: 1px;
+  height: 20px;
+  background: #1a2230;
+  flex-shrink: 0;
+  margin: 0 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid #1e2a3a;
+  background: transparent;
+  color: #4a5a6e;
+  transition: all 0.1s ease;
+  user-select: none;
+}
+.chip:hover { color: #8a9aae; border-color: #2a3a4e; }
+.chip.on {
+  background: rgba(229, 178, 93, 0.12);
+  border-color: rgba(229, 178, 93, 0.4);
+  color: #e5b25d;
+}
+
+/* City-colored chips */
+.chip[data-city].on { background: var(--city-bg); border-color: var(--city-color); color: var(--city-color); }
+
+/* ===== CITY CARDS ===== */
+.city-card {
+  position: relative;
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-top: 3px solid var(--city-color, #1e2a3a);
+  border-radius: 14px;
+  padding: 16px;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: default;
+}
+.city-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at top center, var(--city-glow, transparent) 0%, transparent 65%);
+  pointer-events: none;
+}
+.city-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.city-card.highlight-sell { box-shadow: 0 0 0 1px rgba(74,222,128,0.3), 0 4px 16px rgba(74,222,128,0.1); }
+.city-card.highlight-buy  { box-shadow: 0 0 0 1px rgba(229,178,93,0.3), 0 4px 16px rgba(229,178,93,0.1); }
+
+.city-card .city-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--city-color, #4a5a6e);
+  margin-bottom: 10px;
+}
+.city-card .city-rank {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 10px;
+  color: #2a3a4e;
+  font-weight: 600;
+}
+.city-card .price-main {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+  line-height: 1.1;
+}
+.city-card .price-main.empty { font-size: 16px; font-weight: 400; color: #2a3a4e; }
+.city-card .price-unit { font-size: 11px; color: #4a5a6e; margin-left: 3px; font-weight: 400; }
+.city-card .price-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #4a5a6e;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #141c28;
+}
+
+/* ===== SORT TOGGLES ===== */
+.sort-toggle {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #1e2a3a;
+  background: transparent;
+  color: #4a5a6e;
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+.sort-toggle:hover { color: #8a9aae; }
+.sort-toggle.on {
+  background: rgba(229, 178, 93, 0.12);
+  border-color: rgba(229, 178, 93, 0.4);
+  color: #e5b25d;
+}
+
+/* ===== TABLE ===== */
+.sort-th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #3a4a5e;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+.sort-th:hover { color: #8a9aae; }
+.sort-th.active { color: #e5b25d; }
+
+tbody tr { border-bottom: 1px solid #141c28; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.015); }
+tbody td { padding: 10px 16px; }
+
+td.city-cell {
+  font-weight: 600;
+  font-size: 13px;
+  padding-left: 12px;
+  border-left: 2px solid var(--city-color, transparent);
+  color: var(--city-color, #e2e8f0);
+}
+
+.q1 { color: #8a9aae; }
+.q2 { color: #4ade80; }
+.q3 { color: #60a5fa; }
+.q4 { color: #a78bfa; }
+.q5 { color: #fbbf24; }
+
+.age-fresh { color: #4ade80; }
+.age-ok    { color: #fbbf24; }
+.age-stale { color: #f87171; }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ===== STATUS INDICATOR ===== */
+#statusDot.live    { background: #4ade80; box-shadow: 0 0 6px #4ade8066; animation: pulse2 2s ease infinite; }
+#statusDot.loading { background: #fbbf24; }
+#statusDot.error   { background: #f87171; }
+
+/* ===== MOBILE RESULTS ===== */
+#mobileResults .dd-section { border-top: none; }
+#mobileResults .dd-section + .dd-section { border-top: 1px solid #141c28; }
+
+/* ===== HERO STATS ===== */
+.hero-stat { text-align: right; }
+.hero-stat .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: #3a4a5e; }
+.hero-stat .value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: #e2e8f0; }
+
+/* ===== KEYBOARD SHORTCUT OVERLAY ===== */
+@keyframes pulse2 {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ===== TABLE EMPTY ROW ===== */
+.empty-row td { text-align: center; color: #2a3a4e; padding: 32px; }
+
+/* ===== TAB NAVIGATION ===== */
+.tab-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4a5a6e;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  margin-bottom: -1px;
+}
+.tab-btn:hover  { color: #8a9aae; }
+.tab-btn.active { color: #e5b25d; border-bottom-color: #e5b25d; }
+
+/* ===== CRAFTING LAYOUT ===== */
+.craft-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .craft-layout { grid-template-columns: 1fr; }
+}
+
+.craft-sidebar {
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-radius: 14px;
+  padding: 16px;
+  position: sticky;
+  top: 160px;
+}
+
+.craft-recipe-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.recipe-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.recipe-item:hover  { background: rgba(255,255,255,0.03); }
+.recipe-item.active { background: rgba(229,178,93,0.08); border: 1px solid rgba(229,178,93,0.2); }
+
+.craft-calc-panel {
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-radius: 14px;
+  padding: 20px;
+  min-height: 300px;
+}
+
+/* ===== BEST CITY BANNER (crafting) ===== */
+.best-city-banner {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid #1e2a3a;
+  border-left-width: 3px;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+/* ===== RECOMMENDATION CARDS ===== */
+.rec-card {
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-top: 2px solid var(--city-color, #1e2a3a);
+  border-radius: 12px;
+  padding: 14px;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.rec-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  border-color: var(--city-color, #2a3a4e);
+}
+
+/* ===== QUANTITY SELECTOR BUTTONS ===== */
+.qty-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #1e2a3a;
+  background: transparent;
+  color: #4a5a6e;
+  cursor: pointer;
+  transition: all 0.1s;
+  user-select: none;
+}
+.qty-btn:hover { color: #8a9aae; border-color: #2a3a4e; }
+.qty-btn.active {
+  background: rgba(229,178,93,0.12);
+  border-color: rgba(229,178,93,0.4);
+  color: #e5b25d;
+}
+
+/* ===== PROFIT HERO CARDS ===== */
+.profit-hero {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.hero-card {
+  flex: 1;
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-top-width: 2px;
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.hero-pay     { border-top-color: rgba(248,113,113,0.45); }
+.hero-receive { border-top-color: rgba(96,165,250,0.45);  }
+.hero-profit  { border-top-color: #2a3a4e; }
+.hero-profit.profitable {
+  border-top-color: rgba(74,222,128,0.45);
+  background: rgba(74,222,128,0.03);
+}
+.hero-profit.loss {
+  border-top-color: rgba(248,113,113,0.45);
+  background: rgba(248,113,113,0.03);
+}
+
+.hero-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 18px;
+  color: #2a3a4e;
+  flex-shrink: 0;
+}
+.hero-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #4a5a6e;
+  margin-bottom: 5px;
+}
+.hero-card-amount {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.hero-unit {
+  font-size: 12px;
+  color: #4a5a6e;
+  font-weight: 400;
+  margin-left: 2px;
+}
+.hero-card-sub {
+  font-size: 11px;
+  color: #4a5a6e;
+  margin-top: 5px;
+}
+
+@media (max-width: 640px) {
+  .profit-hero { flex-direction: column; gap: 4px; }
+  .hero-sep { transform: rotate(90deg); padding: 2px 0; min-height: 24px; }
+}
+
+/* ===== EFFICIENCY METRICS GRID ===== */
+.eff-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .eff-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.eff-card {
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.eff-score-card { border-color: rgba(229,178,93,0.2); }
+
+.eff-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #4a5a6e;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.eff-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.eff-sub {
+  font-size: 10px;
+  color: #4a5a6e;
+  margin-top: 2px;
+}
+
+.eff-bar {
+  height: 4px;
+  background: #1e2a3a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.eff-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+/* ===== BLACK MARKET ROUTE CARDS ===== */
+#bmRoutesSection .route-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+#bmRoutesSection .route-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+}
+
+/* Danger's Way glow */
+#bmRoutesSection .danger-card {
+  box-shadow: 0 0 0 1px rgba(248,113,113,0.15), 0 4px 20px rgba(248,113,113,0.08);
+}
+#bmRoutesSection .danger-card:hover {
+  box-shadow: 0 0 0 1px rgba(248,113,113,0.3), 0 8px 28px rgba(248,113,113,0.15);
+}
+
+/* Safe Way glow */
+#bmRoutesSection .safe-card {
+  box-shadow: 0 0 0 1px rgba(74,222,128,0.1), 0 4px 20px rgba(74,222,128,0.06);
+}
+#bmRoutesSection .safe-card:hover {
+  box-shadow: 0 0 0 1px rgba(74,222,128,0.25), 0 8px 28px rgba(74,222,128,0.12);
+}

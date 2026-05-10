@@ -1151,8 +1151,37 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- INIT ----------
 
+// Silently fetch the full 7000+ item database from ao-bin-dumps and merge it in
+async function loadExtendedItems() {
+  const AO_ITEMS_URL = "https://raw.githubusercontent.com/broderickhyman/ao-bin-dumps/master/formatted/items.json";
+  try {
+    const res = await fetch(AO_ITEMS_URL);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    const existingIds = new Set(window.ALBION_ITEMS.map(i => i.id));
+    const extras = [];
+    for (const item of data) {
+      const id   = item.UniqueName;
+      const name = item.LocalizedNames?.["EN-US"] || item.LocalizedNames?.["EN-GB"];
+      if (id && name && !existingIds.has(id)) {
+        extras.push({ id, name });
+        existingIds.add(id);
+      }
+    }
+    if (extras.length) {
+      window.ALBION_ITEMS = [...window.ALBION_ITEMS, ...extras];
+      initFuse(); // rebuild search index with full list
+      console.log(`[Albion Market] Extended item database loaded: ${window.ALBION_ITEMS.length} items total`);
+    }
+  } catch (e) {
+    // Silently fail — built-in list is used as fallback
+  }
+}
+
 function init() {
   initFuse();
+  loadExtendedItems(); // async — extends search index in background
   buildFilterBar();
   buildSortToggles();
   initTableSort();

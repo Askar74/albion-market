@@ -84,7 +84,7 @@ const POPULAR_IDS = [
 // ---------- STATE ----------
 
 const state = {
-  server:            "west",
+  server:            "europe",
   selectedCities:    new Set(CITIES),
   selectedTiers:     new Set(["T4","T5","T6","T7","T8"]),
   selectedEnchants:  new Set(["0"]),
@@ -1300,7 +1300,7 @@ async function initGoldTab() {
   host.dataset.loaded = "1";
   host.innerHTML = `<div class="text-slate-500 text-sm text-center py-8 animate-pulse">Loading gold prices…</div>`;
   try {
-    const serverKey = document.getElementById("server")?.value || "west";
+    const serverKey = document.getElementById("server")?.value || "europe";
     const url  = `${API_BASES[serverKey]}/stats/gold.json?count=48`;
     const data = await apiFetch(url);
     if (!data?.length) { host.innerHTML = `<div class="text-slate-600 py-8 text-center">No gold data.</div>`; return; }

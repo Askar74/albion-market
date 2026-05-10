@@ -258,7 +258,8 @@ function setCalcStatus(kind) {
 // ---- Fetch prices ----
 async function fetchRecipePrices(recipe) {
   const ids = [recipe.id, ...recipe.materials.map(m => m.id)];
-  const url = `${window.API_BASES["west"]}/stats/prices/${ids.join(",")}.json`
+  const serverKey = document.getElementById("server")?.value || "europe";
+  const url = `${window.API_BASES[serverKey]}/stats/prices/${ids.join(",")}.json`
     + `?locations=${encodeURIComponent((window.CITIES||[]).join(","))}`;
   return window.apiFetch(url);
 }
@@ -282,8 +283,9 @@ async function loadRecommendations() {
     const allIds = new Set();
     const recipes = REC_ITEMS.map(id => window.CRAFTING_RECIPES[id]).filter(Boolean);
     for (const rec of recipes) { allIds.add(rec.id); rec.materials.forEach(m => allIds.add(m.id)); }
+    const serverKey = document.getElementById("server")?.value || "europe";
     const prices = await window.apiFetch(
-      `${window.API_BASES["west"]}/stats/prices/${[...allIds].join(",")}.json`
+      `${window.API_BASES[serverKey]}/stats/prices/${[...allIds].join(",")}.json`
       + `?locations=${encodeURIComponent((window.CITIES||[]).join(","))}`
     );
     const ranked = [];

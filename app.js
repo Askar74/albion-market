@@ -672,9 +672,9 @@ function renderBlackMarketRoutes(allRows) {
 
   // Danger's Way = highest raw profit
   const dangersWay = routes[0];
-  // Safe Way = best efficiency among Low/Medium risk (riskScore ≤ 2)
-  const safeRoutes = routes.filter(r => r.meta.riskScore <= 2).sort((a, b) => b.efficiency - a.efficiency);
-  const safeWay    = safeRoutes[0] && safeRoutes[0] !== dangersWay ? safeRoutes[0] : (routes[1] || null);
+  // Safe Way = best efficiency among Low/Medium risk (riskScore ≤ 2), never the same as Danger's Way
+  const safeRoutes = routes.filter(r => r.meta.riskScore <= 2 && r !== dangersWay).sort((a, b) => b.efficiency - a.efficiency);
+  const safeWay    = safeRoutes[0] || null;
 
   host.innerHTML = `
     <div class="flex items-center gap-3 mb-4 flex-wrap">

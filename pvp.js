@@ -40,8 +40,8 @@ async function pvpFetch(url) {
     if (direct.ok) return direct.json();
   } catch (_) { /* fall through to proxy */ }
 
-  // Route through CORS proxy
-  const proxied = await fetch(CORS_PROXY + encodeURIComponent(url));
+  // Route through CORS proxy (raw URL — corsproxy.io does NOT want it encoded)
+  const proxied = await fetch(CORS_PROXY + url);
   if (!proxied.ok) throw new Error(`HTTP ${proxied.status}`);
   return proxied.json();
 }

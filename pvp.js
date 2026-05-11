@@ -61,6 +61,8 @@ async function pvpFetch(apiPath, query = "") {
   if (CF_WORKER_URL) {
     const url = workerUrl(server, apiPath, query);
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    // Albion gameinfo API returns 404 when no results found (not a real error)
+    if (res.status === 404) return [];
     if (!res.ok) throw new Error(`Worker HTTP ${res.status}`);
     return res.json();
   }
@@ -69,6 +71,7 @@ async function pvpFetch(apiPath, query = "") {
   const base = GAMEINFO_BASES[server] || GAMEINFO_BASES.europe;
   const url  = base + apiPath + (query ? "?" + query : "");
   const res  = await fetch(url, { signal: AbortSignal.timeout(6000) });
+  if (res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -326,14 +329,32 @@ function renderPvpFeed() {
 async function pvpSearch(query) {
   query = (query || "").trim();
   if (!query) return;
-  const path  = pvpState.mode === "player" ? "/players/search" : "/guilds/search";
-  const qstr  = "q=" + encodeURIComponent(query);
   pvpLoading("Searching…");
-  try {
-    const data = await pvpFetch(path, qstr);
-    renderSearchResults(Array.isArray(data) ? data : []);
-  } catch (e) {
-    pvpError(`Search failed: ${e.message}`);
+
+  if (pvpState.mode === "player") {
+    try {
+      // Primary: fuzzy search index
+      let results = await pvpFetch("/players/search", "q=" + encodeURIComponent(query));
+
+      // Fallback: if search index misses the player, try exact-name lookup
+      if (!results.length) {
+        try {
+          const exact = await pvpFetch("/players/playername/" + encodeURIComponent(query));
+          if (exact && exact.Id) results = [exact];
+        } catch (_) { /* exact lookup also failed — no match */ }
+      }
+
+      renderSearchResults(results);
+    } catch (e) {
+      pvpError(`Search failed: ${e.message}`);
+    }
+  } else {
+    try {
+      const data = await pvpFetch("/guilds/search", "q=" + encodeURIComponent(query));
+      renderSearchResults(Array.isArray(data) ? data : []);
+    } catch (e) {
+      pvpError(`Search failed: ${e.message}`);
+    }
   }
 }
 

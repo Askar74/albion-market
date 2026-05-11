@@ -1,12 +1,22 @@
 // ============================================================
 //  PVP TAB  —  Kill & Death tracker
 //  Works for Solo Players and Guilds
-//  Uses the Albion Online Gameinfo API (free, no key needed)
+//  Uses the Albion Online Gameinfo API via Cloudflare Worker
 // ============================================================
 
-// The gameinfo API blocks direct browser requests (CORS).
-// We route through corsproxy.io — free, no setup needed.
-const CORS_PROXY = "https://corsproxy.io/?";
+// ── CLOUDFLARE WORKER URL ────────────────────────── 
+// After deploying cloudflare-worker.js, paste your Worker URL here.
+// Example: "https://albion-proxy.yourname.workers.dev"
+// Leave empty ("") to stay in placeholder/external-links mode.
+const CF_WORKER_URL = "https://albion-proxy.askarmohamed011.workers.dev/"
+
+// Routes requests through your Worker (when set) or returns null.
+// Pattern: {WORKER}/{server}/{api-path}?{query}
+function workerUrl(server, path, query = "") {
+  if (!CF_WORKER_URL) return null;
+  const base = CF_WORKER_URL.replace(/\/$/, "");
+  return `${base}/${server}${path}${query ? "?" + query : ""}`;
+}
 
 const GAMEINFO_BASES = {
   europe : "https://gameinfo.albiononline.com/api/gameinfo",
@@ -28,22 +38,39 @@ let pvpState = {
 
 // ── Core helpers ────────────────────────────────────────────────────
 
-function pvpBase() {
-  const s = document.getElementById("server")?.value || "europe";
-  return GAMEINFO_BASES[s] || GAMEINFO_BASES.europe;
+function pvpServer() {
+  return document.getElementById("server")?.value || "europe";
 }
 
-async function pvpFetch(url) {
-  // Try direct first (works when running locally / if API ever adds CORS)
-  try {
-    const direct = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (direct.ok) return direct.json();
-  } catch (_) { /* fall through to proxy */ }
+function pvpBase() {
+  return GAMEINFO_BASES[pvpServer()] || GAMEINFO_BASES.europe;
+}
 
-  // Route through CORS proxy (raw URL — corsproxy.io does NOT want it encoded)
-  const proxied = await fetch(CORS_PROXY + url);
-  if (!proxied.ok) throw new Error(`HTTP ${proxied.status}`);
-  return proxied.json();
+/**
+ * Fetch a gameinfo API path.
+ * - When CF_WORKER_URL is set: routes through your Cloudflare Worker (no CORS issues).
+ * - When empty: tries direct fetch (works if API ever adds CORS headers, e.g. localhost).
+ *
+ * @param {string} apiPath  - e.g. "/players/search"
+ * @param {string} [query]  - query string WITHOUT leading "?", e.g. "q=PlayerName"
+ */
+async function pvpFetch(apiPath, query = "") {
+  const server = pvpServer();
+
+  // ── Path A: Cloudflare Worker is configured ──────────────────────
+  if (CF_WORKER_URL) {
+    const url = workerUrl(server, apiPath, query);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`Worker HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // ── Path B: No Worker yet — try direct (usually blocked by CORS) ─
+  const base = GAMEINFO_BASES[server] || GAMEINFO_BASES.europe;
+  const url  = base + apiPath + (query ? "?" + query : "");
+  const res  = await fetch(url, { signal: AbortSignal.timeout(6000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 function pvpTimeAgo(ts) {
@@ -299,13 +326,11 @@ function renderPvpFeed() {
 async function pvpSearch(query) {
   query = (query || "").trim();
   if (!query) return;
-  const base = pvpBase();
-  const url  = pvpState.mode === "player"
-    ? `${base}/players/search?q=${encodeURIComponent(query)}`
-    : `${base}/guilds/search?q=${encodeURIComponent(query)}`;
+  const path  = pvpState.mode === "player" ? "/players/search" : "/guilds/search";
+  const qstr  = "q=" + encodeURIComponent(query);
   pvpLoading("Searching…");
   try {
-    const data = await pvpFetch(url);
+    const data = await pvpFetch(path, qstr);
     renderSearchResults(Array.isArray(data) ? data : []);
   } catch (e) {
     pvpError(`Search failed: ${e.message}`);
@@ -317,13 +342,12 @@ async function pvpSelectEntity(id, name, type) {
   pvpState.filter   = "all";
   pvpLoading(`Loading data for ${name}…`);
 
-  const base = pvpBase();
   try {
     let events = [];
     if (type === "player") {
       const [kills, deaths] = await Promise.all([
-        pvpFetch(`${base}/players/${id}/kills?offset=0&limit=20`),
-        pvpFetch(`${base}/players/${id}/deaths?offset=0&limit=20`),
+        pvpFetch(`/players/${id}/kills`,  "offset=0&limit=20"),
+        pvpFetch(`/players/${id}/deaths`, "offset=0&limit=20"),
       ]);
       events = [
         ...(Array.isArray(kills)  ? kills  : []),
@@ -331,7 +355,7 @@ async function pvpSelectEntity(id, name, type) {
       ];
     } else {
       // Guild: fetch events where guild is involved
-      const data = await pvpFetch(`${base}/events?guildId=${id}&offset=0&limit=51`);
+      const data = await pvpFetch("/events", `guildId=${id}&offset=0&limit=51`);
       events = Array.isArray(data) ? data : [];
     }
     // Sort newest first

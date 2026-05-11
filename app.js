@@ -579,7 +579,7 @@ function buildItemIds(baseId) {
   return ids;
 }
 
-async function fetchPrices() {
+async function fetchPrices(retryCount = 0) {
   if (!state.currentItemId) return;
   setStatus("loading");
 
@@ -598,9 +598,14 @@ async function fetchPrices() {
     scheduleRefresh();
   } catch (err) {
     console.error(err);
+    // Auto-retry once after 4 seconds before showing the error state
+    if (retryCount < 1) {
+      setTimeout(() => fetchPrices(retryCount + 1), 4000);
+      return; // keep "loading" state while retrying
+    }
     setStatus("error");
     document.getElementById("priceBody").innerHTML =
-      '<tr class="empty-row"><td colspan="7">Failed to fetch. Check connection or try again.</td></tr>';
+      '<tr class="empty-row"><td colspan="7">Price data temporarily unavailable. Click ↻ to retry.</td></tr>';
   }
 }
 

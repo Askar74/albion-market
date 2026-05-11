@@ -4,6 +4,10 @@
 //  Uses the Albion Online Gameinfo API (free, no key needed)
 // ============================================================
 
+// The gameinfo API blocks direct browser requests (CORS).
+// We route through corsproxy.io — free, no setup needed.
+const CORS_PROXY = "https://corsproxy.io/?";
+
 const GAMEINFO_BASES = {
   europe : "https://gameinfo.albiononline.com/api/gameinfo",
   west   : "https://gameinfo.albiononline.com/api/gameinfo",
@@ -30,9 +34,16 @@ function pvpBase() {
 }
 
 async function pvpFetch(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  // Try direct first (works when running locally / if API ever adds CORS)
+  try {
+    const direct = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (direct.ok) return direct.json();
+  } catch (_) { /* fall through to proxy */ }
+
+  // Route through CORS proxy
+  const proxied = await fetch(CORS_PROXY + encodeURIComponent(url));
+  if (!proxied.ok) throw new Error(`HTTP ${proxied.status}`);
+  return proxied.json();
 }
 
 function pvpTimeAgo(ts) {

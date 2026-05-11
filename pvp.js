@@ -377,6 +377,8 @@ function pvpClearSearch() {
 }
 
 // ── Tab bootstrap ────────────────────────────────────────────────────
+// NOTE: Native PvP search is pending Cloudflare Worker deployment (CORS fix).
+// Until then, the tab shows trusted external killboard links.
 
 function initPvpTab() {
   const host = document.getElementById("tab-pvp");
@@ -384,58 +386,101 @@ function initPvpTab() {
   host.dataset.pvpInit = "1";
 
   host.innerHTML = `
-    <div class="max-w-4xl mx-auto">
+    <div class="max-w-3xl mx-auto">
 
-      <!-- Mode toggle -->
-      <div class="pvp-mode-row">
-        <button id="pvpModePlayer" class="pvp-mode-btn active" onclick="setPvpMode('player')">
-          👤 Solo Player
-        </button>
-        <button id="pvpModeGuild" class="pvp-mode-btn" onclick="setPvpMode('guild')">
-          🛡 Guild
-        </button>
+      <!-- Header -->
+      <div class="pvp-empty-state" style="padding-bottom:24px">
+        <div class="pvp-empty-icon">⚔</div>
+        <div class="pvp-empty-title">PvP Kill &amp; Death Tracker</div>
+        <div class="pvp-empty-desc">
+          Native player search is coming soon. While we finish the full integration,
+          use the trusted community killboards below — they have complete kill history,
+          gear loadouts, build stats, and guild leaderboards.
+        </div>
       </div>
 
-      <!-- Search bar -->
-      <div class="pvp-search-row">
+      <!-- Quick search bar — opens in external site -->
+      <div class="pvp-search-row" style="margin-bottom:28px">
         <div class="pvp-search-box">
           <span class="pvp-search-icon">⌕</span>
-          <input id="pvpSearchInput" type="text" autocomplete="off"
+          <input id="pvpExtInput" type="text" autocomplete="off"
             class="pvp-search-input"
-            placeholder="Enter player name…" />
-          <button id="pvpClearBtn" class="pvp-clear-btn" style="display:none"
-            onclick="pvpClearSearch()">✕</button>
+            placeholder="Enter player or guild name…" />
         </div>
-        <button id="pvpSearchBtn" class="pvp-search-submit">Search</button>
+        <button class="pvp-search-submit" onclick="pvpOpenExternal('ml')">
+          Look up →
+        </button>
       </div>
 
-      <!-- Results / feed area -->
-      <div id="pvpResults">
-        <div class="pvp-empty-state">
-          <div class="pvp-empty-icon">⚔</div>
-          <div class="pvp-empty-title">Player &amp; Guild Kill Tracker</div>
-          <div class="pvp-empty-desc">
-            Search for any Albion Online player or guild to see their recent kills,
-            deaths, K/D ratio, and full gear loadouts — updated live from the
-            Albion Online Data API.
+      <!-- Killboard cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:32px">
+
+        <a href="https://murderledger.albiononline2d.com/" target="_blank" rel="noopener" class="pvp-ext-card">
+          <div class="pvp-ext-card-header" style="color:#f87171">🗡 Murder Ledger</div>
+          <div class="pvp-ext-card-desc">Full kill &amp; death history, build stats, weapon matchup matrix, guild leaderboards. Best overall killboard.</div>
+          <div class="pvp-ext-card-tags">
+            <span class="pvp-ext-tag">All servers</span>
+            <span class="pvp-ext-tag">Player search</span>
+            <span class="pvp-ext-tag">Guild search</span>
           </div>
-          <div class="pvp-empty-tips">
-            <div class="pvp-tip">👤 <strong>Solo Player</strong> — track your own kills &amp; deaths, or spy on rivals</div>
-            <div class="pvp-tip">🛡 <strong>Guild</strong> — see all recent PvP activity for an entire guild</div>
+          <div class="pvp-ext-card-link">Open Murder Ledger →</div>
+        </a>
+
+        <a href="https://killboard-1.com/" target="_blank" rel="noopener" class="pvp-ext-card">
+          <div class="pvp-ext-card-header" style="color:#fb923c">⚔ KillBoard #1</div>
+          <div class="pvp-ext-card-desc">Tracks kills, deaths, and PvP performance across all regions. Includes a Discord bot for guild kill notifications.</div>
+          <div class="pvp-ext-card-tags">
+            <span class="pvp-ext-tag">All servers</span>
+            <span class="pvp-ext-tag">Discord bot</span>
+            <span class="pvp-ext-tag">Guild tracking</span>
           </div>
-        </div>
+          <div class="pvp-ext-card-link">Open KillBoard #1 →</div>
+        </a>
+
+        <a href="https://albionbattlehub.com/" target="_blank" rel="noopener" class="pvp-ext-card">
+          <div class="pvp-ext-card-header" style="color:#60a5fa">🛡 Albion Battle Hub</div>
+          <div class="pvp-ext-card-desc">Advanced killboard and ZvZ battle reports. Multi-battle analysis, guild composition tracking, and regear system.</div>
+          <div class="pvp-ext-card-tags">
+            <span class="pvp-ext-tag">Battle reports</span>
+            <span class="pvp-ext-tag">ZvZ analysis</span>
+            <span class="pvp-ext-tag">Regear tool</span>
+          </div>
+          <div class="pvp-ext-card-link">Open Battle Hub →</div>
+        </a>
+
+        <a href="https://albionbb.com/" target="_blank" rel="noopener" class="pvp-ext-card">
+          <div class="pvp-ext-card-header" style="color:#a78bfa">📊 AlbionBB</div>
+          <div class="pvp-ext-card-desc">Detailed battle reports for guilds and alliances. Damage dealt, healing, fame earned, and full guild compositions.</div>
+          <div class="pvp-ext-card-tags">
+            <span class="pvp-ext-tag">Guild stats</span>
+            <span class="pvp-ext-tag">Alliance view</span>
+            <span class="pvp-ext-tag">Damage logs</span>
+          </div>
+          <div class="pvp-ext-card-link">Open AlbionBB →</div>
+        </a>
+
       </div>
 
+      <p style="font-size:11px;color:#2a3a4e;text-align:center">
+        ⚔ Native kill tracking (solo player &amp; guild) is in development.
+        The full tab will be enabled once the backend proxy is deployed.
+      </p>
     </div>`;
 
-  // Wire up events
-  const input    = document.getElementById("pvpSearchInput");
-  const btn      = document.getElementById("pvpSearchBtn");
-  const clearBtn = document.getElementById("pvpClearBtn");
+  // Wire up the quick-search to open Murder Ledger with the name pre-filled
+  document.getElementById("pvpExtInput")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") pvpOpenExternal("ml");
+  });
+}
 
-  input.addEventListener("input",   () => { clearBtn.style.display = input.value ? "" : "none"; });
-  input.addEventListener("keydown", e  => { if (e.key === "Enter") pvpSearch(input.value); });
-  btn.addEventListener("click",     ()  => pvpSearch(input.value));
+function pvpOpenExternal(site) {
+  const name = (document.getElementById("pvpExtInput")?.value || "").trim();
+  const urls = {
+    ml: name
+      ? `https://murderledger.albiononline2d.com/Check#${encodeURIComponent(name)}`
+      : "https://murderledger.albiononline2d.com/",
+  };
+  window.open(urls[site] || urls.ml, "_blank", "noopener");
 }
 
 // Expose everything app.js needs

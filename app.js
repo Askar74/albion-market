@@ -558,28 +558,6 @@ function buildChips(values, selectedSet, getOpts, onChange) {
 
 // ---------- ITEM SELECTION ----------
 
-function selectItem(id, name) {
-  state.currentItemId   = id;
-  state.currentItemName = name || id;
-  saveRecent(id, name || id);
-
-  document.getElementById("emptyState").classList.add("hidden");
-  ["citySection","bestSection","bmRoutesSection","tableSection","itemHero"].forEach(s =>
-    document.getElementById(s)?.classList.remove("hidden")
-  );
-
-  const heroImg  = document.getElementById("heroImg");
-  const heroName = document.getElementById("heroName");
-  const heroId   = document.getElementById("heroId");
-  heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
-  heroImg.src  = iconUrl(id, 1);
-  heroName.textContent = name || id;
-  heroId.textContent   = id;
-  document.getElementById("heroInsights").innerHTML = "";
-
-  fetchPrices();
-}
-
 // ---------- API / DATA ----------
 
 function buildItemIds(baseId) {
@@ -1153,11 +1131,29 @@ document.addEventListener("keydown", (e) => {
 
 // Silently fetch the full 7000+ item database from ao-bin-dumps and merge it in
 async function loadExtendedItems() {
-  const AO_ITEMS_URL = "https://raw.githubusercontent.com/broderickhyman/ao-bin-dumps/master/formatted/items.json";
+  const AO_ITEMS_URL  = "https://raw.githubusercontent.com/broderickhyman/ao-bin-dumps/master/formatted/items.json";
+  const CACHE_KEY     = "albion_items_ext_v1";
+  const CACHE_TTL_MS  = 24 * 60 * 60 * 1000; // 24 hours
+
   try {
-    const res = await fetch(AO_ITEMS_URL);
-    if (!res.ok) return;
-    const data = await res.json();
+    // Try sessionStorage cache first — avoids re-downloading 7MB on every refresh
+    let data = null;
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { ts, items } = JSON.parse(cached);
+        if (Date.now() - ts < CACHE_TTL_MS) data = items;
+      }
+    } catch (_) {}
+
+    if (!data) {
+      const res = await fetch(AO_ITEMS_URL);
+      if (!res.ok) return;
+      data = await res.json();
+      // Save to sessionStorage for this browser session
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), items: data })); } catch (_) {}
+    }
+
     if (!Array.isArray(data)) return;
     const existingIds = new Set(window.ALBION_ITEMS.map(i => i.id));
     const extras = [];
@@ -1171,11 +1167,11 @@ async function loadExtendedItems() {
     }
     if (extras.length) {
       window.ALBION_ITEMS = [...window.ALBION_ITEMS, ...extras];
-      initFuse(); // rebuild search index with full list
-      console.log(`[Albion Market] Extended item database loaded: ${window.ALBION_ITEMS.length} items total`);
+      initFuse();
+      console.log(`[Albion Market] Extended item database: ${window.ALBION_ITEMS.length} items`);
     }
-  } catch (e) {
-    // Silently fail — built-in list is used as fallback
+  } catch (_) {
+    // Silently fail — built-in list used as fallback
   }
 }
 
@@ -1242,37 +1238,27 @@ function init() {
   // Refresh button
   document.getElementById("refreshBtn").addEventListener("click", fetchPrices);
 
-  // Override selectItem to also close mobile overlay
-  const _orig = selectItem;
-  window.__selectItem = function(id, name) {
-    _orig(id, name);
-    closeMobileOverlay();
-    closeDropdown(searchDD);
-    document.getElementById("searchInput").value = name || id;
-    onSearchInput(name || id, searchDD);
-  };
 }
 
-// Patch selectItem after init to wire up mobile close
-const _selectItemOrig = selectItem;
+// Single authoritative selectItem — consolidated from two earlier versions
 function selectItem(id, name) {
   state.currentItemId   = id;
   state.currentItemName = name || id;
   saveRecent(id, name || id);
 
   document.getElementById("emptyState").classList.add("hidden");
-  ["citySection","bestSection","tableSection","itemHero"].forEach(s =>
+  ["citySection","bestSection","bmRoutesSection","tableSection","itemHero"].forEach(s =>
     document.getElementById(s)?.classList.remove("hidden")
   );
 
-  const _heroImg = document.getElementById("heroImg");
-  _heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
-  _heroImg.src = iconUrl(id, 1);
+  const heroImg = document.getElementById("heroImg");
+  heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
+  heroImg.src = iconUrl(id, 1);
   document.getElementById("heroName").textContent = name || id;
-  document.getElementById("heroId").textContent = id;
+  document.getElementById("heroId").textContent   = id;
   document.getElementById("heroInsights").innerHTML = "";
 
-  // update search input text
+  // Keep search input in sync
   const sinp = document.getElementById("searchInput");
   if (sinp && document.activeElement !== sinp) sinp.value = name || id;
 

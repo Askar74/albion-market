@@ -1,0 +1,436 @@
+// ============================================================
+//  PVP TAB  —  Kill & Death tracker
+//  Works for Solo Players and Guilds
+//  Uses the Albion Online Gameinfo API (free, no key needed)
+// ============================================================
+
+const GAMEINFO_BASES = {
+  europe : "https://gameinfo.albiononline.com/api/gameinfo",
+  west   : "https://gameinfo.albiononline.com/api/gameinfo",
+  east   : "https://gameinfo-sgp.albiononline.com/api/gameinfo",
+};
+
+const GEAR_SLOTS = [
+  "MainHand","OffHand","Head","Armor","Shoes",
+  "Bag","Cape","Mount","Potion","Food"
+];
+
+let pvpState = {
+  mode    : "player",  // "player" | "guild"
+  selected: null,      // { id, name, type }
+  events  : [],
+  filter  : "all",     // "all" | "kills" | "deaths"
+};
+
+// ── Core helpers ────────────────────────────────────────────────────
+
+function pvpBase() {
+  const s = document.getElementById("server")?.value || "europe";
+  return GAMEINFO_BASES[s] || GAMEINFO_BASES.europe;
+}
+
+async function pvpFetch(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function pvpTimeAgo(ts) {
+  const t  = ts.endsWith("Z") ? ts : ts + "Z";
+  const diff = Date.now() - new Date(t).getTime();
+  const m    = Math.floor(diff / 60000);
+  if (m < 1)  return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function fmtFame(n) {
+  if (!n) return "0";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(1) + "K";
+  return n.toLocaleString();
+}
+
+// ── Gear strip (10 equipment icons) ─────────────────────────────────
+
+function gearStrip(equipment, alignRight = false) {
+  if (!equipment) return `<div class="pvp-gear-strip"></div>`;
+  const slots = GEAR_SLOTS.map(slot => {
+    const item = equipment[slot];
+    if (!item?.Type) {
+      return `<div class="pvp-gear-slot pvp-gear-empty" title="${slot}"></div>`;
+    }
+    const q   = item.Quality || 1;
+    const src = `https://render.albiononline.com/v1/item/${item.Type}.png?quality=${q}`;
+    return `
+      <div class="pvp-gear-slot" title="${slot} · ${item.Type}">
+        <img src="${src}" onerror="onIconError(this)" alt="${slot}" />
+      </div>`;
+  }).join("");
+  return `<div class="pvp-gear-strip${alignRight ? " pvp-gear-right" : ""}">${slots}</div>`;
+}
+
+// ── Kill card ────────────────────────────────────────────────────────
+
+function killCard(ev, trackedId, trackedType) {
+  const killer = ev.Killer || {};
+  const victim = ev.Victim  || {};
+
+  const isKill  = trackedType === "guild"
+    ? killer.GuildId === trackedId
+    : killer.Id      === trackedId;
+  const isDeath = trackedType === "guild"
+    ? victim.GuildId  === trackedId
+    : victim.Id       === trackedId;
+
+  const fame  = fmtFame(ev.TotalVictimKillFame || 0);
+  const time  = pvpTimeAgo(ev.TimeStamp);
+  const parts = ev.Participants?.length || 1;
+  const loc   = ev.Location || "";
+
+  const cardCls = isKill  ? "pvp-card pvp-card-kill"
+                : isDeath ? "pvp-card pvp-card-death"
+                :           "pvp-card pvp-card-neutral";
+
+  const badge = isKill
+    ? `<span class="pvp-badge pvp-badge-kill">⚔ KILL</span>`
+    : isDeath
+    ? `<span class="pvp-badge pvp-badge-death">💀 DEATH</span>`
+    : `<span class="pvp-badge pvp-badge-neutral">EVENT</span>`;
+
+  const killerGuild = killer.GuildName
+    ? `<div class="pvp-pguild">${killer.GuildName}${killer.AllianceTag ? ` [${killer.AllianceTag}]` : ""}</div>` : "";
+  const victimGuild = victim.GuildName
+    ? `<div class="pvp-pguild">${victim.GuildName}${victim.AllianceTag  ? ` [${victim.AllianceTag}]`  : ""}</div>` : "";
+
+  const guildTag = parts > 1
+    ? `<span class="pvp-group-tag">👥 ${parts}-man</span>` : "";
+
+  return `
+  <div class="${cardCls}">
+
+    <!-- Top bar: badge / participants / meta -->
+    <div class="pvp-card-header">
+      <div class="pvp-card-header-left">
+        ${badge}
+        ${guildTag}
+      </div>
+      <div class="pvp-card-header-right">
+        ${loc  ? `<span class="pvp-meta-loc">📍 ${loc}</span>`  : ""}
+        <span class="pvp-meta-time">${time}</span>
+        <span class="pvp-meta-fame">⚔ ${fame} fame</span>
+      </div>
+    </div>
+
+    <!-- Players -->
+    <div class="pvp-matchup">
+
+      <!-- Killer -->
+      <div class="pvp-player">
+        <div class="pvp-player-header">
+          <span class="pvp-role-label pvp-role-kill">Killer</span>
+        </div>
+        <div class="pvp-pname${isKill ? " pvp-pname-tracked" : ""}">${killer.Name || "Unknown"}</div>
+        ${killerGuild}
+        ${gearStrip(killer.Equipment, false)}
+      </div>
+
+      <!-- VS divider -->
+      <div class="pvp-vs">⚔</div>
+
+      <!-- Victim -->
+      <div class="pvp-player pvp-player-right">
+        <div class="pvp-player-header pvp-player-header-right">
+          <span class="pvp-role-label pvp-role-death">Victim</span>
+        </div>
+        <div class="pvp-pname pvp-pname-right${isDeath ? " pvp-pname-tracked" : ""}">${victim.Name || "Unknown"}</div>
+        ${victimGuild ? `<div class="pvp-pguild pvp-pguild-right">${victim.GuildName}${victim.AllianceTag ? ` [${victim.AllianceTag}]` : ""}</div>` : ""}
+        ${gearStrip(victim.Equipment, true)}
+      </div>
+
+    </div>
+  </div>`;
+}
+
+// ── Render helpers ──────────────────────────────────────────────────
+
+function pvpHost() { return document.getElementById("pvpResults"); }
+
+function pvpLoading(msg = "Loading…") {
+  pvpHost().innerHTML = `<div class="pvp-loading">${msg}</div>`;
+}
+
+function pvpError(msg) {
+  pvpHost().innerHTML = `
+    <div class="pvp-error-box">
+      <div class="pvp-error-title">⚠ Could not load data</div>
+      <div class="pvp-error-body">${msg}</div>
+      <div class="pvp-error-hint">Open browser console (F12) for more details, or try a different server.</div>
+    </div>`;
+}
+
+function renderSearchResults(results) {
+  if (!results.length) {
+    pvpHost().innerHTML = `<div class="pvp-empty">No results found — check the spelling or switch server.</div>`;
+    return;
+  }
+  pvpHost().innerHTML = `
+    <div class="pvp-result-list">
+      ${results.slice(0, 10).map(r => `
+        <button class="pvp-result-item"
+          onclick="pvpSelectEntity('${r.Id}','${(r.Name||"").replace(/'/g,"\\'").replace(/"/g,"&quot;")}','${pvpState.mode}')">
+          <span class="pvp-result-dot"></span>
+          <div class="pvp-result-info">
+            <div class="pvp-result-name">${r.Name || "—"}</div>
+            ${r.GuildName  ? `<div class="pvp-result-sub">${r.GuildName}</div>` : ""}
+            ${r.KillFame   ? `<div class="pvp-result-sub">⚔ ${fmtFame(r.KillFame)} kill fame</div>` : ""}
+          </div>
+          <span class="pvp-result-arrow">View →</span>
+        </button>`).join("")}
+    </div>`;
+}
+
+function renderPvpFeed() {
+  const { selected, events, filter } = pvpState;
+  const host = pvpHost();
+
+  if (!events.length) {
+    host.innerHTML = `<div class="pvp-empty">No recent PvP activity found for <strong>${selected.name}</strong>.<br>
+      <span style="font-size:12px;color:#3a4a5e">Data only covers events recorded by the community client app. Older events may not appear.</span></div>`;
+    return;
+  }
+
+  // Compute stats
+  let kills = 0, deaths = 0, totalFame = 0;
+  for (const e of events) {
+    const isK = selected.type === "guild" ? e.Killer?.GuildId === selected.id : e.Killer?.Id === selected.id;
+    const isD = selected.type === "guild" ? e.Victim?.GuildId  === selected.id : e.Victim?.Id  === selected.id;
+    if (isK) kills++;
+    if (isD) deaths++;
+    totalFame += e.TotalVictimKillFame || 0;
+  }
+  const kd       = deaths > 0 ? (kills / deaths).toFixed(2) : kills > 0 ? "∞" : "—";
+  const kdColor  = kd === "∞" || parseFloat(kd) >= 1 ? "#4ade80" : kd === "—" ? "#4a5a6e" : "#f87171";
+
+  // Filter visible events
+  const visible = events.filter(e => {
+    if (filter === "all") return true;
+    const isK = selected.type === "guild" ? e.Killer?.GuildId === selected.id : e.Killer?.Id === selected.id;
+    const isD = selected.type === "guild" ? e.Victim?.GuildId  === selected.id : e.Victim?.Id  === selected.id;
+    return filter === "kills" ? isK : isD;
+  });
+
+  const safeId   = selected.id.replace(/'/g, "\\'");
+  const safeName = selected.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
+  host.innerHTML = `
+
+    <!-- Profile header -->
+    <div class="pvp-profile">
+      <div class="pvp-profile-left">
+        <div class="pvp-profile-type">${selected.type === "guild" ? "🛡 Guild" : "👤 Player"}</div>
+        <div class="pvp-profile-name">${selected.name}</div>
+      </div>
+      <div class="pvp-profile-stats">
+        <div class="pvp-stat-block">
+          <div class="pvp-stat-val" style="color:#4ade80">${kills}</div>
+          <div class="pvp-stat-lbl">Kills</div>
+        </div>
+        <div class="pvp-stat-sep"></div>
+        <div class="pvp-stat-block">
+          <div class="pvp-stat-val" style="color:#f87171">${deaths}</div>
+          <div class="pvp-stat-lbl">Deaths</div>
+        </div>
+        <div class="pvp-stat-sep"></div>
+        <div class="pvp-stat-block">
+          <div class="pvp-stat-val" style="color:${kdColor}">${kd}</div>
+          <div class="pvp-stat-lbl">K / D</div>
+        </div>
+        <div class="pvp-stat-sep"></div>
+        <div class="pvp-stat-block">
+          <div class="pvp-stat-val" style="color:#e5b25d">${fmtFame(totalFame)}</div>
+          <div class="pvp-stat-lbl">Fame</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="pvp-filter-bar">
+      <div class="pvp-filter-group">
+        <button class="pvp-filter-btn ${filter==="all"    ? "active" : ""}" onclick="setPvpFilter('all')">
+          All <span class="pvp-filter-count">${events.length}</span>
+        </button>
+        <button class="pvp-filter-btn ${filter==="kills"  ? "active" : ""}" onclick="setPvpFilter('kills')">
+          ⚔ Kills <span class="pvp-filter-count">${kills}</span>
+        </button>
+        <button class="pvp-filter-btn ${filter==="deaths" ? "active" : ""}" onclick="setPvpFilter('deaths')">
+          💀 Deaths <span class="pvp-filter-count">${deaths}</span>
+        </button>
+      </div>
+      <button class="pvp-refresh-btn"
+        onclick="pvpSelectEntity('${safeId}','${safeName}','${selected.type}')">
+        ↻ Refresh
+      </button>
+    </div>
+
+    <!-- Kill feed -->
+    <div class="pvp-feed">
+      ${visible.length
+        ? visible.map(e => killCard(e, selected.id, selected.type)).join("")
+        : `<div class="pvp-empty">No ${filter} to show.</div>`}
+    </div>`;
+}
+
+// ── Actions (called from HTML onclick / keyboard) ────────────────────
+
+async function pvpSearch(query) {
+  query = (query || "").trim();
+  if (!query) return;
+  const base = pvpBase();
+  const url  = pvpState.mode === "player"
+    ? `${base}/players/search?q=${encodeURIComponent(query)}`
+    : `${base}/guilds/search?q=${encodeURIComponent(query)}`;
+  pvpLoading("Searching…");
+  try {
+    const data = await pvpFetch(url);
+    renderSearchResults(Array.isArray(data) ? data : []);
+  } catch (e) {
+    pvpError(`Search failed: ${e.message}`);
+  }
+}
+
+async function pvpSelectEntity(id, name, type) {
+  pvpState.selected = { id, name, type };
+  pvpState.filter   = "all";
+  pvpLoading(`Loading data for ${name}…`);
+
+  const base = pvpBase();
+  try {
+    let events = [];
+    if (type === "player") {
+      const [kills, deaths] = await Promise.all([
+        pvpFetch(`${base}/players/${id}/kills?offset=0&limit=20`),
+        pvpFetch(`${base}/players/${id}/deaths?offset=0&limit=20`),
+      ]);
+      events = [
+        ...(Array.isArray(kills)  ? kills  : []),
+        ...(Array.isArray(deaths) ? deaths : []),
+      ];
+    } else {
+      // Guild: fetch events where guild is involved
+      const data = await pvpFetch(`${base}/events?guildId=${id}&offset=0&limit=51`);
+      events = Array.isArray(data) ? data : [];
+    }
+    // Sort newest first
+    events.sort((a, b) => new Date(b.TimeStamp) - new Date(a.TimeStamp));
+    pvpState.events = events;
+    renderPvpFeed();
+  } catch (e) {
+    pvpError(`Failed to load data: ${e.message}`);
+  }
+}
+
+function setPvpFilter(f) {
+  pvpState.filter = f;
+  renderPvpFeed();
+}
+
+function setPvpMode(mode) {
+  pvpState.mode     = mode;
+  pvpState.selected = null;
+  pvpState.events   = [];
+  pvpState.filter   = "all";
+
+  document.getElementById("pvpModePlayer")?.classList.toggle("active", mode === "player");
+  document.getElementById("pvpModeGuild")?.classList.toggle("active",  mode === "guild");
+
+  const input = document.getElementById("pvpSearchInput");
+  if (input) {
+    input.value       = "";
+    input.placeholder = mode === "player" ? "Enter player name…" : "Enter guild name…";
+  }
+  const clearBtn = document.getElementById("pvpClearBtn");
+  if (clearBtn) clearBtn.style.display = "none";
+
+  pvpHost().innerHTML = "";
+}
+
+function pvpClearSearch() {
+  const input    = document.getElementById("pvpSearchInput");
+  const clearBtn = document.getElementById("pvpClearBtn");
+  if (input)    { input.value = ""; input.focus(); }
+  if (clearBtn)   clearBtn.style.display = "none";
+  pvpHost().innerHTML = "";
+}
+
+// ── Tab bootstrap ────────────────────────────────────────────────────
+
+function initPvpTab() {
+  const host = document.getElementById("tab-pvp");
+  if (!host || host.dataset.pvpInit) return;
+  host.dataset.pvpInit = "1";
+
+  host.innerHTML = `
+    <div class="max-w-4xl mx-auto">
+
+      <!-- Mode toggle -->
+      <div class="pvp-mode-row">
+        <button id="pvpModePlayer" class="pvp-mode-btn active" onclick="setPvpMode('player')">
+          👤 Solo Player
+        </button>
+        <button id="pvpModeGuild" class="pvp-mode-btn" onclick="setPvpMode('guild')">
+          🛡 Guild
+        </button>
+      </div>
+
+      <!-- Search bar -->
+      <div class="pvp-search-row">
+        <div class="pvp-search-box">
+          <span class="pvp-search-icon">⌕</span>
+          <input id="pvpSearchInput" type="text" autocomplete="off"
+            class="pvp-search-input"
+            placeholder="Enter player name…" />
+          <button id="pvpClearBtn" class="pvp-clear-btn" style="display:none"
+            onclick="pvpClearSearch()">✕</button>
+        </div>
+        <button id="pvpSearchBtn" class="pvp-search-submit">Search</button>
+      </div>
+
+      <!-- Results / feed area -->
+      <div id="pvpResults">
+        <div class="pvp-empty-state">
+          <div class="pvp-empty-icon">⚔</div>
+          <div class="pvp-empty-title">Player &amp; Guild Kill Tracker</div>
+          <div class="pvp-empty-desc">
+            Search for any Albion Online player or guild to see their recent kills,
+            deaths, K/D ratio, and full gear loadouts — updated live from the
+            Albion Online Data API.
+          </div>
+          <div class="pvp-empty-tips">
+            <div class="pvp-tip">👤 <strong>Solo Player</strong> — track your own kills &amp; deaths, or spy on rivals</div>
+            <div class="pvp-tip">🛡 <strong>Guild</strong> — see all recent PvP activity for an entire guild</div>
+          </div>
+        </div>
+      </div>
+
+    </div>`;
+
+  // Wire up events
+  const input    = document.getElementById("pvpSearchInput");
+  const btn      = document.getElementById("pvpSearchBtn");
+  const clearBtn = document.getElementById("pvpClearBtn");
+
+  input.addEventListener("input",   () => { clearBtn.style.display = input.value ? "" : "none"; });
+  input.addEventListener("keydown", e  => { if (e.key === "Enter") pvpSearch(input.value); });
+  btn.addEventListener("click",     ()  => pvpSearch(input.value));
+}
+
+// Expose everything app.js needs
+window.initPvpTab      = initPvpTab;
+window.pvpSelectEntity = pvpSelectEntity;
+window.setPvpFilter    = setPvpFilter;
+window.setPvpMode      = setPvpMode;
+window.pvpSearch       = pvpSearch;
+window.pvpClearSearch  = pvpClearSearch;

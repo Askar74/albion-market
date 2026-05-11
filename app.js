@@ -1301,7 +1301,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
       document.getElementById("tab-" + tab)?.classList.remove("hidden");
       if (tab === "crafting") window.initCraftingTab?.();
-      if (tab === "gold") initGoldTab();
+      if (tab === "gold")     initGoldTab();
+      if (tab === "pvp")      window.initPvpTab?.();
     });
   });
 });

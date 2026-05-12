@@ -699,6 +699,352 @@ td.loading-cell {
 }
 
 /* ===================================================================
+   SCANNER TAB
+   =================================================================== */
+
+/* Layout shell */
+.scanner-header {
+  margin-bottom: 20px;
+}
+.scanner-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.scanner-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #e2e8f0;
+  margin-bottom: 4px;
+}
+.scanner-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Controls */
+.scanner-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.scan-select {
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  color: #94a3b8;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+}
+.scan-btn {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  letter-spacing: 0.02em;
+}
+.scan-btn:active { transform: scale(0.97); }
+.scan-btn-start {
+  background: #e5b25d;
+  color: #090d14;
+}
+.scan-btn-start:hover { background: #f0c070; }
+.scan-btn-stop {
+  background: rgba(248,113,113,0.15);
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.3);
+}
+.scan-btn-stop:hover { background: rgba(248,113,113,0.25); }
+
+/* Progress bar */
+.scan-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.scan-progress-track {
+  flex: 1;
+  height: 4px;
+  background: #1e2a3a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.scan-progress-bar {
+  height: 4px;
+  background: linear-gradient(90deg, #e5b25d, #f0c070);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.scan-progress-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Category filter chips */
+.scan-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.scan-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.scan-chip:hover { border-color: #2a3a4e; color: #94a3b8; }
+.scan-chip.active {
+  background: rgba(229,178,93,0.1);
+  border-color: rgba(229,178,93,0.4);
+  color: #e5b25d;
+}
+
+/* Stats bar */
+.scan-stats {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.scan-stat {
+  flex: 1;
+  padding: 12px 16px;
+  border-right: 1px solid #1e2a3a;
+}
+.scan-stat:last-child { border-right: none; }
+.scan-stat-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.scan-stat-val {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty state */
+.scan-empty {
+  text-align: center;
+  padding: 64px 16px;
+}
+.scan-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+.scan-empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+.scan-empty-sub {
+  font-size: 13px;
+  color: #475569;
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* Results table */
+.scan-no-results {
+  text-align: center;
+  padding: 32px;
+  color: #475569;
+  font-size: 13px;
+}
+.scan-table-header {
+  display: grid;
+  grid-template-columns: 44px 1fr 160px 120px 120px 80px;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+  border-bottom: 1px solid #1e2a3a;
+}
+.scan-rows { }
+
+.scan-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 160px 120px 120px 80px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(30,42,58,0.6);
+  transition: background 0.1s;
+  cursor: default;
+}
+.scan-row:hover { background: rgba(255,255,255,0.02); }
+.scan-row:last-child { border-bottom: none; }
+
+.scan-rank {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  text-align: center;
+}
+
+.scan-item-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.scan-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #1e2a3a;
+  background: #10151f;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.scan-item-info { min-width: 0; }
+.scan-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scan-item-cat {
+  font-size: 10px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.scan-route {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+.scan-city {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.scan-bm {
+  text-decoration: underline dotted;
+}
+.scan-arrow {
+  font-size: 10px;
+  color: #475569;
+}
+
+.scan-prices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scan-price-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.scan-price-label {
+  font-size: 10px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.scan-price-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-profit-cell { }
+.scan-profit {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.scan-roi {
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+.scan-action-cell { }
+.scan-view-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgba(229,178,93,0.08);
+  border: 1px solid rgba(229,178,93,0.2);
+  color: #e5b25d;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.scan-view-btn:hover {
+  background: rgba(229,178,93,0.15);
+  border-color: rgba(229,178,93,0.4);
+}
+
+.scan-more {
+  text-align: center;
+  padding: 10px;
+  font-size: 11px;
+  color: #475569;
+  border-top: 1px solid #1e2a3a;
+}
+
+/* Responsive: stack on mobile */
+@media (max-width: 640px) {
+  .scan-table-header { display: none; }
+  .scan-row {
+    grid-template-columns: 36px 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 6px 8px;
+  }
+  .scan-rank  { grid-row: 1; grid-column: 1; }
+  .scan-item-cell  { grid-row: 1; grid-column: 2; }
+  .scan-profit-cell { grid-row: 1; grid-column: 3; }
+  .scan-route { grid-row: 2; grid-column: 2; }
+  .scan-prices { display: none; }
+  .scan-action-cell { grid-row: 2; grid-column: 3; }
+}
+
+/* ===================================================================
    PVP TAB
    =================================================================== */
 

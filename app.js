@@ -1704,12 +1704,13 @@ function selectItem(id, name) {
 document.addEventListener("DOMContentLoaded", () => {
   init();
 
-  // Expose constants for crafting.js (after declarations)
-  window.API_BASES = API_BASES;
-  window.CITIES    = CITIES;
-  window.CITY_META = CITY_META;
-  window.iconUrl   = iconUrl;
-  window.ageString = ageString;
+  // Expose constants for crafting.js and scanner.js (after declarations)
+  window.API_BASES   = API_BASES;
+  window.CITIES      = CITIES;
+  window.CITY_META   = CITY_META;
+  window.iconUrl     = iconUrl;
+  window.ageString   = ageString;
+  window.selectItem  = selectItem;   // used by scanner "View →" button
 
   // Tab switching
   document.querySelectorAll(".tab-btn").forEach(btn => {
@@ -1720,11 +1721,13 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
       document.getElementById("tab-" + tab)?.classList.remove("hidden");
       if (tab === "crafting") window.initCraftingTab?.();
+      if (tab === "scanner")  window.initScannerTab?.();
       if (tab === "gold")     initGoldTab();
       if (tab === "pvp")      window.initPvpTab?.();
     });
   });
 });
+
 
 // ---- Gold tab ----
 async function initGoldTab() {
@@ -1736,14 +1739,19 @@ async function initGoldTab() {
     const serverKey = document.getElementById("server")?.value || "europe";
     const url  = `${API_BASES[serverKey]}/stats/gold.json?count=48`;
     const data = await apiFetch(url);
-    if (!data?.length) { host.innerHTML = `<div class="text-slate-600 py-8 text-center">No gold data.</div>`; return; }
-    const latest = data[data.length - 1];
-    const oldest = data[0];
-    const change    = latest.price - oldest.price;
-    const changePct = ((change / oldest.price) * 100).toFixed(2);
-    const color     = change >= 0 ? "#4ade80" : "#f87171";
+    if (!data?.length) {
+      host.innerHTML = `<div class="text-slate-600 py-8 text-center">No gold data.</div>`;
+      return;
+    }
+    const latest     = data[data.length - 1];
+    const oldest     = data[0];
+    const change     = latest.price - oldest.price;
+    const changePct  = ((change / oldest.price) * 100).toFixed(2);
+    const color      = change >= 0 ? "#4ade80" : "#f87171";
+    const priceMin   = Math.min(...data.map(d => d.price));
+    const priceMax   = Math.max(...data.map(d => d.price));
 
-    const tableRows = [...data].reverse().slice(0,24).map(d => {
+    const tableRows = [...data].reverse().slice(0, 24).map(d => {
       const dt = new Date(d.timestamp + (d.timestamp.endsWith("Z") ? "" : "Z"));
       return `<tr class="border-b border-[#141c28]">
         <td class="px-4 py-2 text-sm text-slate-400">${dt.toLocaleString()}</td>
@@ -1759,15 +1767,15 @@ async function initGoldTab() {
         </div>
         <div class="bg-surface border border-border rounded-xl p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">48h Change</div>
-          <div class="text-2xl font-black" style="color:${color}">${change>=0?"+":""}${change.toLocaleString()}</div>
+          <div class="text-2xl font-black" style="color:${color}">${change >= 0 ? "+" : ""}${change.toLocaleString()}</div>
         </div>
         <div class="bg-surface border border-border rounded-xl p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Change %</div>
-          <div class="text-2xl font-black" style="color:${color}">${change>=0?"+":""}${changePct}%</div>
+          <div class="text-2xl font-black" style="color:${color}">${change >= 0 ? "+" : ""}${changePct}%</div>
         </div>
         <div class="bg-surface border border-border rounded-xl p-4">
           <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">48h Range</div>
-          <div class="text-sm font-mono text-slate-300">${Math.min(...data.map(d=>d.price)).toLocaleString()} – ${Math.max(...data.map(d=>d.price)).toLocaleString()}</div>
+          <div class="text-sm font-mono text-slate-300">${priceMin.toLocaleString()} – ${priceMax.toLocaleString()}</div>
         </div>
       </div>
       <div class="bg-surface border border-border rounded-2xl overflow-hidden">
@@ -1782,7 +1790,7 @@ async function initGoldTab() {
       </div>
       <p class="text-xs text-slate-700 mt-3">Gold prices via <a href="https://www.albion-online-data.com" class="underline hover:text-slate-500" target="_blank">Albion Online Data Project</a>.</p>
     `;
-  } catch(e) {
+  } catch (e) {
     host.innerHTML = `<div class="text-red-400 py-8 text-center text-sm">Failed to load gold prices.</div>`;
   }
 }

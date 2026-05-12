@@ -235,6 +235,96 @@ function enchantNum(id) {
   return id.includes("@") ? parseInt(id.split("@")[1]) || 0 : 0;
 }
 
+// ---------- TIER-AWARE DISPLAY HELPERS ----------
+
+/**
+ * Albion's per-tier item name prefixes.
+ * Used to derive display names when the extended database hasn't loaded yet.
+ */
+const TIER_PREFIX = {
+  T2: "Novice's",  T3: "Journeyman's", T4: "Adept's",
+  T5: "Expert's",  T6: "Master's",     T7: "Grandmaster's", T8: "Elder's",
+};
+
+/**
+ * Returns the display item ID that should be shown in the hero panel.
+ * Picks the lowest selected tier + lowest selected enchant, applied to the
+ * current item's suffix (e.g. "_BAG"). Non-tiered items (no T\d prefix) are
+ * returned as-is.
+ */
+function getHeroItemId() {
+  if (!state.currentItemId) return null;
+  const base = state.currentItemId.split("@")[0];
+  const m    = /^T(\d)(_.+)$/.exec(base);
+  if (!m) return state.currentItemId; // non-tiered — return unchanged
+
+  const suffix = m[2]; // e.g. "_BAG"
+
+  // Pick lowest selected tier (sort lexicographically: T4 < T5 … T8)
+  const tiers        = [...state.selectedTiers].sort();
+  const primaryTier  = tiers.length ? tiers[0] : ("T" + m[1]);
+
+  // Pick lowest selected enchant
+  const enchants       = [...state.selectedEnchants].sort();
+  const primaryEnchant = enchants.length ? enchants[0] : "0";
+
+  const primaryBase = primaryTier + suffix;
+  return primaryEnchant === "0" ? primaryBase : `${primaryBase}@${primaryEnchant}`;
+}
+
+/**
+ * Returns the English display name for any item ID.
+ * Searches the loaded item database first; falls back to tier-prefix derivation
+ * so names are always correct even before the extended DB finishes loading.
+ */
+function getItemName(id) {
+  const base = id.split("@")[0];
+
+  // 1. Exact hit in loaded item database
+  if (window.ALBION_ITEMS) {
+    const hit = window.ALBION_ITEMS.find(i => i.id === base || i.id === id);
+    if (hit) return hit.name;
+  }
+
+  // 2. Derive from the known item name by swapping the tier prefix
+  const mNew = /^(T\d)(_.+)$/.exec(base);
+  const mOld = state.currentItemId ? /^(T\d)(_.+)$/.exec(state.currentItemId.split("@")[0]) : null;
+  if (mNew && mOld && state.currentItemName) {
+    const oldPrefix = TIER_PREFIX[mOld[1]];
+    const newPrefix = TIER_PREFIX[mNew[1]];
+    if (oldPrefix && newPrefix && state.currentItemName.startsWith(oldPrefix)) {
+      return newPrefix + state.currentItemName.slice(oldPrefix.length);
+    }
+  }
+
+  // 3. Last resort: return the raw ID
+  return base;
+}
+
+/**
+ * Syncs the hero panel (image, name, ID text, enchant glow) to the current
+ * tier + enchant filter selection. Called from render() so it fires on every
+ * filter change, not just when the user picks a new item.
+ */
+function updateHeroForCurrentTier() {
+  if (!state.currentItemId) return;
+  const displayId = getHeroItemId();
+  if (!displayId) return;
+
+  const heroImg  = document.getElementById("heroImg");
+  const heroName = document.getElementById("heroName");
+  const heroIdEl = document.getElementById("heroId");
+
+  if (heroImg) {
+    const newSrc = iconUrl(displayId, 1);
+    if (heroImg.getAttribute("src") !== newSrc) heroImg.src = newSrc;
+    const eStyle = enchantImgStyle(displayId);
+    heroImg.style.cssText = eStyle || "border:1px solid #1e2a3a;border-radius:12px;";
+  }
+  if (heroName) heroName.textContent = getItemName(displayId);
+  if (heroIdEl)  heroIdEl.textContent  = displayId;
+}
+
 /**
  * Returns an inline CSS style string for an item image based on its enchantment.
  * Matches Albion Online's in-game enchantment border/glow colours:
@@ -941,6 +1031,10 @@ function renderTradingRoutes(allRows) {
 // ---------- RENDER ----------
 
 function render() {
+  // Sync hero image/name/glow to the currently selected tier + enchant FIRST
+  // so the hero is never stale after filter changes.
+  updateHeroForCurrentTier();
+
   let rows = state.rows.filter(r =>
     state.selectedCities.has(r.city) && state.selectedQualities.has(r.quality)
   );
@@ -1153,6 +1247,12 @@ function updateBest(rows) {
 function renderHeroInsights(rows) {
   const host = document.getElementById("heroInsights");
   host.innerHTML = "";
+
+  // Use the tier-adjusted display ID so badges always reflect what's on screen
+  const displayId   = getHeroItemId() || state.currentItemId;
+  const displayName = getItemName(displayId);
+
+  // Dynamic market-condition badges
   const tags = computeMarketInsights(rows);
   for (const t of tags) {
     const span = document.createElement("span");
@@ -1160,13 +1260,36 @@ function renderHeroInsights(rows) {
     span.textContent = t.label;
     host.appendChild(span);
   }
-  // Static insights from item type
-  const itemBadges = getItemInsights({ id: state.currentItemId, name: state.currentItemName });
+
+  // Static item-type badges (tier / category) — uses display ID, not stale currentItemId
+  const itemBadges = getItemInsights({ id: displayId, name: displayName });
   for (const b of itemBadges) {
     const span = document.createElement("span");
     span.className = `badge ${b.cls}`;
     span.textContent = b.label;
     host.appendChild(span);
+  }
+
+  // Craftable shortcut button — lives here so it survives every re-render
+  // (placing it in selectItem() caused it to be wiped by the next render() call)
+  if (isCraftable(displayId)) {
+    const base     = displayId.split("@")[0];
+    const craftBtn = document.createElement("button");
+    craftBtn.className  = "badge badge-gold";
+    craftBtn.style.cssText = "cursor:pointer;padding:4px 10px;font-size:11px;";
+    craftBtn.title      = "Open in Crafting tab";
+    craftBtn.textContent = "⚒ View Recipe";
+    craftBtn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
+      const craftTab = document.querySelector(".tab-btn[data-tab='crafting']");
+      const craftSection = document.getElementById("tab-crafting");
+      if (craftTab)    craftTab.classList.add("active");
+      if (craftSection) craftSection.classList.remove("hidden");
+      window.initCraftingTab?.();
+      setTimeout(() => window.selectCraftingItem?.(base), 300);
+    });
+    host.appendChild(craftBtn);
   }
 
   // Hero stats: best sell / best buy
@@ -1461,47 +1584,24 @@ function selectItem(id, name) {
     document.getElementById(s)?.classList.remove("hidden")
   );
 
+  // Wire up fallback before setting src
   const heroImg = document.getElementById("heroImg");
   heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
-  heroImg.src = iconUrl(id, 1);
-  // Apply enchantment-specific border + glow to the hero image
-  const eStyle = enchantImgStyle(id);
-  heroImg.style.cssText = eStyle || "border:1px solid #1e2a3a;border-radius:12px;";
-  document.getElementById("heroName").textContent = name || id;
-  document.getElementById("heroId").textContent   = id;
   document.getElementById("heroInsights").innerHTML = "";
 
-  // Craftable shortcut button in hero
-  if (isCraftable(id)) {
-    const base = id.split("@")[0];
-    const craftBtn = document.createElement("button");
-    craftBtn.className = "badge badge-gold craft-hero-btn";
-    craftBtn.style.cssText = "cursor:pointer;padding:4px 10px;font-size:11px;";
-    craftBtn.title = "Open in Crafting tab";
-    craftBtn.textContent = "⚒ View Recipe";
-    craftBtn.addEventListener("click", () => {
-      // Switch to crafting tab and load the recipe
-      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
-      const craftTab = document.querySelector(".tab-btn[data-tab='crafting']");
-      const craftSection = document.getElementById("tab-crafting");
-      if (craftTab) craftTab.classList.add("active");
-      if (craftSection) craftSection.classList.remove("hidden");
-      window.initCraftingTab?.();
-      // Try to auto-select the recipe after crafting tab initialises
-      setTimeout(() => window.selectCraftingItem?.(base), 300);
-    });
-    document.getElementById("heroInsights").appendChild(craftBtn);
-  }
+  // Apply hero image + name immediately using the tier-aware helper, so the
+  // correct tier/enchant is shown right away (no flash of the raw search-result tier).
+  updateHeroForCurrentTier();
 
-  // Keep search input in sync
+  // Keep search input in sync with the display name (may differ from raw `name` arg)
+  const displayName = document.getElementById("heroName")?.textContent || name || id;
   const sinp = document.getElementById("searchInput");
-  if (sinp && document.activeElement !== sinp) sinp.value = name || id;
+  if (sinp && document.activeElement !== sinp) sinp.value = displayName;
 
   closeMobileOverlay();
   closeDropdown(document.getElementById("searchDropdown"));
 
-  fetchPrices();
+  fetchPrices(0);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

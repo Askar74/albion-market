@@ -811,6 +811,37 @@ td.city-cell {
 /* Highlight matched characters */
 .pvp-hl { color: #e5b25d; font-weight: 700; }
 
+/* No-results fallback box */
+.pvp-noresult-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 40px 24px;
+  background: #10151f;
+  border: 1px solid #1e2a3a;
+  border-radius: 16px;
+}
+.pvp-noresult-icon  { font-size: 36px; opacity: 0.4; }
+.pvp-noresult-title { font-size: 15px; font-weight: 700; color: #c4cdd8; }
+.pvp-noresult-body  { font-size: 12px; color: #4a5a6e; line-height: 1.6; max-width: 380px; }
+.pvp-noresult-btn {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 10px 22px;
+  background: rgba(229,178,93,0.1);
+  border: 1px solid rgba(229,178,93,0.35);
+  color: #e5b25d;
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 12px;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.pvp-noresult-btn:hover { background: rgba(229,178,93,0.2); }
+.pvp-noresult-hint { font-size: 11px; color: #2a3a4e; }
+
 /* Kill feed */
 .pvp-feed { display:flex; flex-direction:column; gap:10px; }
 

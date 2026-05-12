@@ -334,7 +334,22 @@ function pvpError(msg) {
 
 function renderSearchResults(results, query = "") {
   if (!results.length) {
-    pvpHost().innerHTML = `<div class="pvp-empty">No results found — check spelling, try a different server, or use the exact character name.</div>`;
+    const mlUrl = query
+      ? `https://murderledger.albiononline2d.com/Check#${encodeURIComponent(query)}`
+      : "https://murderledger.albiononline2d.com/";
+    pvpHost().innerHTML = `
+      <div class="pvp-noresult-box">
+        <div class="pvp-noresult-icon">🔍</div>
+        <div class="pvp-noresult-title">No results for "${escHtml(query)}"</div>
+        <div class="pvp-noresult-body">
+          The Albion gameinfo API doesn't have this player in its search index.<br>
+          This happens with some accounts regardless of activity level.
+        </div>
+        <a href="${mlUrl}" target="_blank" rel="noopener" class="pvp-noresult-btn">
+          🗡 Look up "${escHtml(query)}" on Murder Ledger →
+        </a>
+        <div class="pvp-noresult-hint">Murder Ledger has its own full database and will find the player directly.</div>
+      </div>`;
     return;
   }
   pvpHost().innerHTML = `

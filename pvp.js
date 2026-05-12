@@ -30,10 +30,12 @@ const GEAR_SLOTS = [
 ];
 
 let pvpState = {
-  mode    : "player",  // "player" | "guild"
-  selected: null,      // { id, name, type }
-  events  : [],
-  filter  : "all",     // "all" | "kills" | "deaths"
+  mode         : "player",   // "player" | "guild"
+  selected     : null,       // { id, name, type }
+  events       : [],
+  filter       : "all",      // "all" | "kills" | "deaths"
+  cache        : new Map(),  // query → { ts, results } — 5-min TTL
+  suggestTimer : null,       // debounce handle for autocomplete
 };
 
 // ── Core helpers ────────────────────────────────────────────────────
@@ -42,9 +44,7 @@ function pvpServer() {
   return document.getElementById("server")?.value || "europe";
 }
 
-function pvpBase() {
-  return GAMEINFO_BASES[pvpServer()] || GAMEINFO_BASES.europe;
-}
+// pvpBase() removed — pvpFetch() now builds the URL directly.
 
 /**
  * Fetch a gameinfo API path.
@@ -74,6 +74,126 @@ async function pvpFetch(apiPath, query = "") {
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// ── Search utilities ─────────────────────────────────────────────────
+
+/** Remove duplicate results by Id. */
+function pvpDedup(arr) {
+  const seen = new Set();
+  return arr.filter(r => {
+    if (!r.Id || seen.has(r.Id)) return false;
+    seen.add(r.Id);
+    return true;
+  });
+}
+
+/**
+ * Rank results by match quality against the raw query string.
+ * Order: exact match → starts-with → contains → by kill fame.
+ */
+function pvpRankResults(results, query) {
+  const q = query.toLowerCase().trim();
+  return [...results].sort((a, b) => {
+    const an = (a.Name || "").toLowerCase();
+    const bn = (b.Name || "").toLowerCase();
+    if (an === q  && bn !== q)  return -1;
+    if (bn === q  && an !== q)  return  1;
+    const as = an.startsWith(q), bs = bn.startsWith(q);
+    if (as && !bs) return -1;
+    if (bs && !as) return  1;
+    return (b.KillFame || 0) - (a.KillFame || 0);
+  });
+}
+
+/**
+ * Wrap the first occurrence of `query` in the name with a highlight span.
+ * Uses global escHtml() from app.js.
+ */
+function pvpHighlight(name, query) {
+  const safe = escHtml(name);
+  if (!query) return safe;
+  const idx = name.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return safe;
+  return (
+    escHtml(name.slice(0, idx)) +
+    `<span class="pvp-hl">${escHtml(name.slice(idx, idx + query.length))}</span>` +
+    escHtml(name.slice(idx + query.length))
+  );
+}
+
+/** Close the autocomplete suggestion box. */
+function pvpCloseSuggestions() {
+  const box = document.getElementById("pvpSuggestBox");
+  if (box) box.style.display = "none";
+}
+
+/** Render autocomplete suggestions below the search box. */
+function pvpShowSuggestions(results, query) {
+  const box = document.getElementById("pvpSuggestBox");
+  if (!box) return;
+
+  if (!results.length) {
+    box.innerHTML = `<div class="pvp-suggest-empty">No results — try a different spelling or server</div>`;
+    box.style.display = "block";
+    return;
+  }
+
+  box.innerHTML = results.slice(0, 8).map(r => {
+    const safeId   = (r.Id   || "").replace(/'/g, "\\'");
+    const safeName = (r.Name || "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    return `
+      <button class="pvp-suggest-item"
+        onclick="pvpSelectFromSuggest('${safeId}','${safeName}','${pvpState.mode}')">
+        <div class="pvp-suggest-info">
+          <div class="pvp-suggest-name">${pvpHighlight(r.Name || "—", query)}</div>
+          ${r.GuildName ? `<div class="pvp-suggest-sub">${escHtml(r.GuildName)}</div>` : ""}
+        </div>
+        ${r.KillFame ? `<div class="pvp-suggest-fame">⚔ ${fmtFame(r.KillFame)}</div>` : ""}
+      </button>`;
+  }).join("");
+  box.style.display = "block";
+}
+
+/**
+ * Debounced autocomplete — fires 280 ms after the user stops typing.
+ * Uses a 5-minute client-side cache to avoid hammering the Worker.
+ */
+async function pvpSuggest(query) {
+  const key = pvpState.mode + "|" + query.toLowerCase();
+  const TTL = 5 * 60 * 1000;
+  const hit = pvpState.cache.get(key);
+  if (hit && Date.now() - hit.ts < TTL) {
+    pvpShowSuggestions(hit.results, query);
+    return;
+  }
+
+  try {
+    const path = pvpState.mode === "player" ? "/players/search" : "/guilds/search";
+    let results = await pvpFetch(path, "q=" + encodeURIComponent(query));
+
+    // Exact-name fallback for players missing from the search index
+    if (!results.length && pvpState.mode === "player") {
+      try {
+        const exact = await pvpFetch("/players/playername/" + encodeURIComponent(query));
+        if (exact?.Id) results = [exact];
+      } catch (_) {}
+    }
+
+    results = pvpRankResults(pvpDedup(results), query);
+    pvpState.cache.set(key, { ts: Date.now(), results });
+    pvpShowSuggestions(results, query);
+  } catch (_) {
+    pvpCloseSuggestions();
+  }
+}
+
+/** Called when user clicks a suggestion row. */
+function pvpSelectFromSuggest(id, name, type) {
+  pvpCloseSuggestions();
+  const inp = document.getElementById("pvpSearchInput");
+  if (inp) inp.value = name;
+  pvpSelectEntity(id, name, type);
 }
 
 function pvpTimeAgo(ts) {
@@ -212,24 +332,28 @@ function pvpError(msg) {
     </div>`;
 }
 
-function renderSearchResults(results) {
+function renderSearchResults(results, query = "") {
   if (!results.length) {
-    pvpHost().innerHTML = `<div class="pvp-empty">No results found — check the spelling or switch server.</div>`;
+    pvpHost().innerHTML = `<div class="pvp-empty">No results found — check spelling, try a different server, or use the exact character name.</div>`;
     return;
   }
   pvpHost().innerHTML = `
     <div class="pvp-result-list">
-      ${results.slice(0, 10).map(r => `
+      ${results.slice(0, 10).map(r => {
+        const safeId   = (r.Id   || "").replace(/'/g, "\\'");
+        const safeName = (r.Name || "").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        return `
         <button class="pvp-result-item"
-          onclick="pvpSelectEntity('${r.Id}','${(r.Name||"").replace(/'/g,"\\'").replace(/"/g,"&quot;")}','${pvpState.mode}')">
+          onclick="pvpSelectEntity('${safeId}','${safeName}','${pvpState.mode}')">
           <span class="pvp-result-dot"></span>
           <div class="pvp-result-info">
-            <div class="pvp-result-name">${r.Name || "—"}</div>
-            ${r.GuildName  ? `<div class="pvp-result-sub">${r.GuildName}</div>` : ""}
-            ${r.KillFame   ? `<div class="pvp-result-sub">⚔ ${fmtFame(r.KillFame)} kill fame</div>` : ""}
+            <div class="pvp-result-name">${pvpHighlight(r.Name || "—", query)}</div>
+            ${r.GuildName ? `<div class="pvp-result-sub">${escHtml(r.GuildName)}</div>` : ""}
+            ${r.KillFame  ? `<div class="pvp-result-sub">⚔ ${fmtFame(r.KillFame)} kill fame</div>` : ""}
           </div>
           <span class="pvp-result-arrow">View →</span>
-        </button>`).join("")}
+        </button>`;
+      }).join("")}
     </div>`;
 }
 
@@ -238,7 +362,7 @@ function renderPvpFeed() {
   const host = pvpHost();
 
   if (!events.length) {
-    host.innerHTML = `<div class="pvp-empty">No recent PvP activity found for <strong>${selected.name}</strong>.<br>
+    host.innerHTML = `<div class="pvp-empty">No recent PvP activity found for <strong>${escHtml(selected.name)}</strong>.<br>
       <span style="font-size:12px;color:#3a4a5e">Data only covers events recorded by the community client app. Older events may not appear.</span></div>`;
     return;
   }
@@ -272,7 +396,7 @@ function renderPvpFeed() {
     <div class="pvp-profile">
       <div class="pvp-profile-left">
         <div class="pvp-profile-type">${selected.type === "guild" ? "🛡 Guild" : "👤 Player"}</div>
-        <div class="pvp-profile-name">${selected.name}</div>
+        <div class="pvp-profile-name">${escHtml(selected.name)}</div>
       </div>
       <div class="pvp-profile-stats">
         <div class="pvp-stat-block">
@@ -329,32 +453,38 @@ function renderPvpFeed() {
 async function pvpSearch(query) {
   query = (query || "").trim();
   if (!query) return;
+  pvpCloseSuggestions();
   pvpLoading("Searching…");
 
-  if (pvpState.mode === "player") {
-    try {
-      // Primary: fuzzy search index
-      let results = await pvpFetch("/players/search", "q=" + encodeURIComponent(query));
+  const key = pvpState.mode + "|" + query.toLowerCase();
+  const TTL = 5 * 60 * 1000;
+  const hit = pvpState.cache.get(key);
 
-      // Fallback: if search index misses the player, try exact-name lookup
-      if (!results.length) {
+  try {
+    let results;
+
+    if (hit && Date.now() - hit.ts < TTL) {
+      // Serve from cache — instant
+      results = hit.results;
+    } else {
+      const path = pvpState.mode === "player" ? "/players/search" : "/guilds/search";
+      results = await pvpFetch(path, "q=" + encodeURIComponent(query));
+
+      // Exact-name fallback for players missing from the search index (e.g. "Askar")
+      if (!results.length && pvpState.mode === "player") {
         try {
           const exact = await pvpFetch("/players/playername/" + encodeURIComponent(query));
-          if (exact && exact.Id) results = [exact];
-        } catch (_) { /* exact lookup also failed — no match */ }
+          if (exact?.Id) results = [exact];
+        } catch (_) {}
       }
 
-      renderSearchResults(results);
-    } catch (e) {
-      pvpError(`Search failed: ${e.message}`);
+      results = pvpRankResults(pvpDedup(Array.isArray(results) ? results : []), query);
+      pvpState.cache.set(key, { ts: Date.now(), results });
     }
-  } else {
-    try {
-      const data = await pvpFetch("/guilds/search", "q=" + encodeURIComponent(query));
-      renderSearchResults(Array.isArray(data) ? data : []);
-    } catch (e) {
-      pvpError(`Search failed: ${e.message}`);
-    }
+
+    renderSearchResults(results, query);
+  } catch (e) {
+    pvpError(`Search failed: ${e.message}`);
   }
 }
 
@@ -406,10 +536,12 @@ function setPvpMode(mode) {
   if (input) {
     input.value       = "";
     input.placeholder = mode === "player" ? "Enter player name…" : "Enter guild name…";
+    input.focus();
   }
   const clearBtn = document.getElementById("pvpClearBtn");
   if (clearBtn) clearBtn.style.display = "none";
 
+  pvpCloseSuggestions();
   pvpHost().innerHTML = "";
 }
 
@@ -418,6 +550,7 @@ function pvpClearSearch() {
   const clearBtn = document.getElementById("pvpClearBtn");
   if (input)    { input.value = ""; input.focus(); }
   if (clearBtn)   clearBtn.style.display = "none";
+  pvpCloseSuggestions();
   pvpHost().innerHTML = "";
 }
 
@@ -439,18 +572,21 @@ function initPvpTab() {
           <button id="pvpModeGuild"  class="pvp-mode-btn"        onclick="setPvpMode('guild')">🛡 Guild</button>
         </div>
 
-        <!-- Search bar -->
-        <div class="pvp-search-row">
-          <div class="pvp-search-box">
-            <span class="pvp-search-icon">⌕</span>
-            <input id="pvpSearchInput" type="text" autocomplete="off"
-              class="pvp-search-input"
-              placeholder="Enter player name…" />
-            <button id="pvpClearBtn" class="pvp-clear-btn" style="display:none" onclick="pvpClearSearch()">✕</button>
+        <!-- Search bar + autocomplete wrapper -->
+        <div style="position:relative;margin-bottom:20px">
+          <div class="pvp-search-row" style="margin-bottom:0">
+            <div class="pvp-search-box">
+              <span class="pvp-search-icon">⌕</span>
+              <input id="pvpSearchInput" type="text" autocomplete="off" spellcheck="false"
+                class="pvp-search-input" placeholder="Enter player name…" />
+              <button id="pvpClearBtn" class="pvp-clear-btn" style="display:none" onclick="pvpClearSearch()">✕</button>
+            </div>
+            <button class="pvp-search-submit" onclick="pvpSearch(document.getElementById('pvpSearchInput').value)">
+              Search →
+            </button>
           </div>
-          <button class="pvp-search-submit" onclick="pvpSearch(document.getElementById('pvpSearchInput').value)">
-            Search →
-          </button>
+          <!-- Live suggestion dropdown -->
+          <div id="pvpSuggestBox" class="pvp-suggest-box" style="display:none"></div>
         </div>
 
         <!-- Results / feed area -->
@@ -471,11 +607,46 @@ function initPvpTab() {
 
       </div>`;
 
-    // Wire up search input
+    // ── Wire up events ───────────────────────────────────────────────
     const inp = document.getElementById("pvpSearchInput");
     const clr = document.getElementById("pvpClearBtn");
-    inp?.addEventListener("keydown", e => { if (e.key === "Enter") pvpSearch(inp.value); });
-    inp?.addEventListener("input",   () => { if (clr) clr.style.display = inp.value ? "" : "none"; });
+
+    inp?.addEventListener("input", () => {
+      const val = inp.value;
+      if (clr) clr.style.display = val ? "" : "none";
+
+      clearTimeout(pvpState.suggestTimer);
+      pvpCloseSuggestions();
+
+      const trimmed = val.trim();
+      if (trimmed.length >= 2) {
+        pvpState.suggestTimer = setTimeout(() => pvpSuggest(trimmed), 280);
+      }
+    });
+
+    inp?.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        clearTimeout(pvpState.suggestTimer);
+        pvpSearch(inp.value);
+        return;
+      }
+      if (e.key === "Escape") {
+        pvpCloseSuggestions();
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        const first = document.querySelector("#pvpSuggestBox .pvp-suggest-item");
+        if (first) { e.preventDefault(); first.focus(); }
+      }
+    });
+
+    // Close suggestions when clicking outside the search area
+    document.addEventListener("click", e => {
+      if (!e.target.closest("#pvpSuggestBox") && !e.target.closest(".pvp-search-box")) {
+        pvpCloseSuggestions();
+      }
+    });
+
     return;
   }
 

@@ -764,6 +764,53 @@ td.city-cell {
 }
 .pvp-refresh-btn:hover { color:#8a9aae; border-color:#2a3a4e; }
 
+/* ── PvP Autocomplete suggestion dropdown ── */
+.pvp-suggest-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 80px; /* stop before the Search button */
+  background: #0f1520;
+  border: 1px solid #1e2a3a;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 4px 16px rgba(0,0,0,0.4);
+  overflow: hidden;
+  z-index: 60;
+  animation: slideDown 0.12s ease;
+}
+.pvp-suggest-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #141c28;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 0.08s;
+}
+.pvp-suggest-item:last-child { border-bottom: none; }
+.pvp-suggest-item:hover,
+.pvp-suggest-item:focus      { background: rgba(229,178,93,0.06); outline: none; }
+.pvp-suggest-info { flex: 1; min-width: 0; }
+.pvp-suggest-name {
+  font-size: 13px; font-weight: 600; color: #d1dae6;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pvp-suggest-sub  { font-size: 11px; color: #4a5a6e; margin-top: 2px; }
+.pvp-suggest-fame { font-size: 11px; color: #6a7a5e; white-space: nowrap; flex-shrink: 0; }
+.pvp-suggest-empty {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #3a4a5e;
+  text-align: center;
+}
+/* Highlight matched characters */
+.pvp-hl { color: #e5b25d; font-weight: 700; }
+
 /* Kill feed */
 .pvp-feed { display:flex; flex-direction:column; gap:10px; }
 

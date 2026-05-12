@@ -421,8 +421,21 @@ td.city-cell {
   50%       { opacity: 0.4; }
 }
 
-/* ===== TABLE EMPTY ROW ===== */
+/* ===== TABLE EMPTY / LOADING ROWS ===== */
 .empty-row td { text-align: center; color: #2a3a4e; padding: 32px; }
+
+/* Loading pulse used by clearStaleUI() placeholders */
+.loading-pulse {
+  color: #2a3a4e;
+  animation: pulse2 1.4s ease infinite;
+  font-variant-numeric: tabular-nums;
+}
+td.loading-cell {
+  text-align: center;
+  color: #2a3a4e;
+  padding: 32px;
+  animation: pulse2 1.4s ease infinite;
+}
 
 /* ===== TAB NAVIGATION ===== */
 .tab-btn {

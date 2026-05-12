@@ -817,16 +817,28 @@ function buildItemIds(baseId) {
   return ids;
 }
 
-let _fetchInFlight = false;
+// Sequence counter — each new top-level fetch increments this.
+// Any in-flight fetch that sees its seq no longer matches _fetchSeq knows a
+// newer request has started and silently discards its results instead of
+// overwriting the screen with stale data.
+let _fetchSeq     = 0;
+let _fetchInFlight = false; // used only by manualRefresh to guard the spin button
 
 async function fetchPrices(retryCount = 0) {
-  // Bug-fix: event listeners pass the MouseEvent as first arg — coerce to number
+  // Guard: event listeners pass MouseEvent — coerce to number
   if (typeof retryCount !== "number") retryCount = 0;
   if (!state.currentItemId) return;
 
-  // Prevent duplicate concurrent requests; retries are allowed through
-  if (_fetchInFlight && retryCount === 0) return;
+  // Each fresh (non-retry) call gets a new sequence number so stale responses
+  // from earlier filter selections are discarded automatically.
+  const mySeq = retryCount === 0 ? ++_fetchSeq : _fetchSeq;
   _fetchInFlight = true;
+
+  // ── Immediately clear stale data so old tier/enchant results never linger ──
+  if (retryCount === 0) {
+    state.rows = [];
+    clearStaleUI(); // wipe city cards, table, and best-deals before new data arrives
+  }
 
   setStatus("loading");
 
@@ -839,23 +851,59 @@ async function fetchPrices(retryCount = 0) {
 
   try {
     const data = await apiFetch(url);
+    // Discard result if a newer fetch has superseded this one
+    if (mySeq !== _fetchSeq) return;
     state.rows = data || [];
     _fetchInFlight = false;
     setStatus("live");
     render();
     scheduleRefresh();
   } catch (err) {
+    if (mySeq !== _fetchSeq) return; // suppress error from stale fetch
     console.error("[Albion Market] fetchPrices error:", err);
     _fetchInFlight = false;
-    // Auto-retry once after 4 seconds before showing the error state
     if (retryCount < 1) {
       setTimeout(() => fetchPrices(retryCount + 1), 4000);
-      return; // keep "loading" status while retrying
+      return;
     }
     setStatus("error");
     document.getElementById("priceBody").innerHTML =
       '<tr class="empty-row"><td colspan="7">Price data temporarily unavailable. Click ↻ to retry.</td></tr>';
   }
+}
+
+/**
+ * Wipes the city cards, price table, and best-deals panel immediately when a
+ * new filter or item selection starts a fresh fetch. Prevents stale prices for
+ * the previous tier/enchant from remaining visible during the loading window.
+ */
+function clearStaleUI() {
+  // City cards → loading skeletons
+  const cardHost = document.getElementById("cityCards");
+  if (cardHost) {
+    const count = Math.min([...state.selectedCities].length, 8) || 4;
+    cardHost.innerHTML = Array(count).fill(0).map(() => `
+      <div class="city-card" style="--city-color:#1e2a3a;--city-glow:transparent;">
+        <div class="city-name" style="background:#1e2a3a;height:10px;width:60%;border-radius:4px;animation:pulse2 1.4s ease infinite;"></div>
+        <div class="price-main" style="background:#1e2a3a;height:22px;width:45%;border-radius:4px;margin-top:14px;animation:pulse2 1.4s ease infinite;"></div>
+        <div class="price-sub" style="border-top:1px solid #141c28;margin-top:12px;">
+          <span style="background:#1e2a3a;height:8px;width:38%;border-radius:3px;display:inline-block;animation:pulse2 1.4s ease infinite;"></span>
+          <span style="background:#1e2a3a;height:8px;width:28%;border-radius:3px;display:inline-block;animation:pulse2 1.4s ease infinite;"></span>
+        </div>
+      </div>`).join("");
+  }
+
+  // Price table → single loading row
+  const tbody = document.getElementById("priceBody");
+  if (tbody) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7" class="loading-cell">Fetching prices…</td></tr>';
+  }
+
+  // Best-deals panel → subtle placeholder
+  ["bestSell", "bestBuy", "bestFlip"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<span class="loading-pulse">—</span>';
+  });
 }
 
 // ---------- TRADING ROUTES ----------
@@ -1470,8 +1518,10 @@ async function loadExtendedItems() {
  * Always busts the price cache so the API is hit fresh regardless of TTL.
  */
 function manualRefresh() {
-  // Prevent double-fire while already loading
+  // Prevent double-fire from button spam while already loading
   if (_fetchInFlight) return;
+  // Invalidate any auto-refresh or pending fetch that might be mid-flight
+  _fetchSeq++;
 
   // 1. Bust the price/history cache so apiFetch goes to the network
   bustPriceCache();

@@ -86,7 +86,7 @@ const POPULAR_IDS = [
 const state = {
   server:            "europe",
   selectedCities:    new Set(CITIES),
-  selectedTiers:     new Set(["T4","T5","T6","T7","T8"]),
+  selectedTiers:     new Set(["T4"]),
   selectedEnchants:  new Set(["0"]),
   selectedQualities: new Set([1, 2, 3]),
   currentItemId:     null,
@@ -217,6 +217,36 @@ function tierOf2(id) {
 /** Enchant level from item ID, e.g. "@2" → "+2"; base items → "+0" */
 function enchantLabel(id) {
   return id.includes("@") ? "+" + id.split("@")[1] : "+0";
+}
+
+/** Enchant level number (0–4) from item ID */
+function enchantNum(id) {
+  return id.includes("@") ? parseInt(id.split("@")[1]) || 0 : 0;
+}
+
+/**
+ * Returns an inline CSS style string for an item image based on its enchantment.
+ * Matches Albion Online's in-game enchantment border/glow colours:
+ *   0 = none  1 = green  2 = blue/cyan  3 = purple  4 = gold
+ */
+function enchantImgStyle(id) {
+  const enc = enchantNum(id);
+  const STYLES = [
+    "",   // +0: default border handled by existing CSS class
+    "border:2px solid rgba(74,222,128,0.6);box-shadow:0 0 10px rgba(74,222,128,0.35),0 0 22px rgba(74,222,128,0.15);border-radius:12px;",
+    "border:2px solid rgba(34,211,238,0.6);box-shadow:0 0 10px rgba(34,211,238,0.35),0 0 22px rgba(34,211,238,0.15);border-radius:12px;",
+    "border:2px solid rgba(167,139,250,0.7);box-shadow:0 0 12px rgba(167,139,250,0.4),0 0 26px rgba(167,139,250,0.18);border-radius:12px;",
+    "border:2px solid rgba(229,178,93,0.8);box-shadow:0 0 14px rgba(229,178,93,0.5),0 0 30px rgba(229,178,93,0.22);border-radius:12px;",
+  ];
+  return STYLES[enc] || "";
+}
+
+/**
+ * CSS class for a colour-coded enchant pill in the search dropdown.
+ * Returns one of: dd-enc-0 dd-enc-1 dd-enc-2 dd-enc-3 dd-enc-4
+ */
+function enchantPillClass(id) {
+  return "dd-enc-" + enchantNum(id);
 }
 
 // ---------- ITEM HELPERS ----------
@@ -419,18 +449,20 @@ function renderDropdown(query, dropdownEl) {
       const idHtml    = highlight(item.id,   item.matches, "id");
       const insights  = getItemInsights(item);
 
-      const tier    = tierOf2(item.id);
-      const enc     = enchantLabel(item.id);
-      const craft   = query && isCraftable(item.id);   // only show craftable badge on search results
-      const tierPill    = tier ? `<span class="dd-tier-pill">${tier}</span>` : "";
-      const enchPill    = enc !== "+0" ? `<span class="dd-enchant-pill">${enc}</span>` : "";
-      const craftBadge  = craft ? `<span class="dd-craft-badge">⚒</span>` : "";
+      const tier       = tierOf2(item.id);
+      const enc        = enchantLabel(item.id);
+      const encStyle   = enchantImgStyle(item.id);
+      const encPillCls = enc !== "+0" ? enchantPillClass(item.id) : "";
+      const craft      = query && isCraftable(item.id);
+      const tierPill   = tier ? `<span class="dd-tier-pill">${tier}</span>` : "";
+      const enchPill   = enc !== "+0" ? `<span class="dd-enchant-pill ${encPillCls}">${enc}</span>` : "";
+      const craftBadge = craft ? `<span class="dd-craft-badge">⚒</span>` : "";
 
       const el = document.createElement("div");
       el.className = "dd-item";
       el.dataset.idx = globalIdx;
       el.innerHTML = `
-        <img class="dd-icon" src="${iconUrl(item.id)}" alt="" loading="lazy" onerror="onIconError(this)" />
+        <img class="dd-icon" src="${iconUrl(item.id)}" alt="" loading="lazy" onerror="onIconError(this)"${encStyle ? ` style="${encStyle}"` : ""} />
         <div class="dd-info">
           <div class="dd-name">${nameHtml}${craftBadge}</div>
           <div class="dd-meta">${tierPill}${enchPill}<span>${idHtml}</span></div>
@@ -1364,6 +1396,9 @@ function selectItem(id, name) {
   const heroImg = document.getElementById("heroImg");
   heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
   heroImg.src = iconUrl(id, 1);
+  // Apply enchantment-specific border + glow to the hero image
+  const eStyle = enchantImgStyle(id);
+  heroImg.style.cssText = eStyle || "border:1px solid #1e2a3a;border-radius:12px;";
   document.getElementById("heroName").textContent = name || id;
   document.getElementById("heroId").textContent   = id;
   document.getElementById("heroInsights").innerHTML = "";

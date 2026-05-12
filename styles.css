@@ -116,6 +116,7 @@
   margin-right: 3px;
   vertical-align: middle;
 }
+/* Base enchant pill — colour overridden per level below */
 .dd-enchant-pill {
   display: inline-flex;
   align-items: center;
@@ -123,11 +124,36 @@
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(167,139,250,0.12);
-  color: #a78bfa;
-  border: 1px solid rgba(167,139,250,0.2);
   margin-right: 3px;
   vertical-align: middle;
+  /* default (shouldn't be used for +0, but safe fallback) */
+  background: rgba(100,116,139,0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(100,116,139,0.2);
+}
+/* +1 green */
+.dd-enchant-pill.dd-enc-1 {
+  background: rgba(74,222,128,0.1);
+  color: #4ade80;
+  border-color: rgba(74,222,128,0.25);
+}
+/* +2 cyan/blue */
+.dd-enchant-pill.dd-enc-2 {
+  background: rgba(34,211,238,0.1);
+  color: #22d3ee;
+  border-color: rgba(34,211,238,0.25);
+}
+/* +3 purple */
+.dd-enchant-pill.dd-enc-3 {
+  background: rgba(167,139,250,0.12);
+  color: #a78bfa;
+  border-color: rgba(167,139,250,0.25);
+}
+/* +4 gold */
+.dd-enchant-pill.dd-enc-4 {
+  background: rgba(229,178,93,0.12);
+  color: #e5b25d;
+  border-color: rgba(229,178,93,0.3);
 }
 .dd-craft-badge {
   display: inline-flex;

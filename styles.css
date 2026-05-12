@@ -393,6 +393,19 @@ td.city-cell {
 #statusDot.loading { background: #fbbf24; }
 #statusDot.error   { background: #f87171; }
 
+/* ===== REFRESH BUTTON SPIN ===== */
+@keyframes refresh-spin {
+  0%   { transform: rotate(0deg);   color: #94a3b8; }
+  40%  { transform: rotate(200deg); color: #e5b25d; }
+  100% { transform: rotate(360deg); color: #e5b25d; }
+}
+#refreshBtn.refreshing {
+  animation: refresh-spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  border-color: rgba(229,178,93,0.4);
+  color: #e5b25d;
+  pointer-events: none;
+}
+
 /* ===== MOBILE RESULTS ===== */
 #mobileResults .dd-section { border-top: none; }
 #mobileResults .dd-section + .dd-section { border-top: 1px solid #141c28; }

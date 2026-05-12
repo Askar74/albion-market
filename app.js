@@ -10,13 +10,14 @@
 // ---------- CACHE & RATE-LIMIT ----------
 
 const _apiCache = new Map();
-const CACHE_TTL = 3 * 60 * 1000; // 3 min
+const CACHE_TTL = 3 * 60 * 1000; // 3 min (for auto-refresh; manual refresh bypasses this)
 let   _lastRequestTime = 0;
 
-async function apiFetch(url) {
+async function apiFetch(url, { forceRefresh = false } = {}) {
   const now    = Date.now();
   const cached = _apiCache.get(url);
-  if (cached && now - cached.ts < CACHE_TTL) return cached.data;
+  // Skip cache only if caller explicitly requests a fresh fetch
+  if (!forceRefresh && cached && now - cached.ts < CACHE_TTL) return cached.data;
 
   // Minimum 100ms between requests (rate-limit)
   const gap = now - _lastRequestTime;
@@ -28,6 +29,16 @@ async function apiFetch(url) {
   const data = await res.json();
   _apiCache.set(url, { data, ts: Date.now() });
   return data;
+
+}
+
+/** Wipe only the price-related entries so manual refresh always hits the API. */
+function bustPriceCache() {
+  for (const key of _apiCache.keys()) {
+    if (key.includes("/stats/prices/") || key.includes("/stats/history/")) {
+      _apiCache.delete(key);
+    }
+  }
 }
 
 // Expose for crafting.js — only apiFetch is needed immediately;
@@ -716,8 +727,17 @@ function buildItemIds(baseId) {
   return ids;
 }
 
+let _fetchInFlight = false;
+
 async function fetchPrices(retryCount = 0) {
+  // Bug-fix: event listeners pass the MouseEvent as first arg — coerce to number
+  if (typeof retryCount !== "number") retryCount = 0;
   if (!state.currentItemId) return;
+
+  // Prevent duplicate concurrent requests; retries are allowed through
+  if (_fetchInFlight && retryCount === 0) return;
+  _fetchInFlight = true;
+
   setStatus("loading");
 
   const ids       = buildItemIds(state.currentItemId);
@@ -730,15 +750,17 @@ async function fetchPrices(retryCount = 0) {
   try {
     const data = await apiFetch(url);
     state.rows = data || [];
+    _fetchInFlight = false;
     setStatus("live");
     render();
     scheduleRefresh();
   } catch (err) {
-    console.error(err);
+    console.error("[Albion Market] fetchPrices error:", err);
+    _fetchInFlight = false;
     // Auto-retry once after 4 seconds before showing the error state
     if (retryCount < 1) {
       setTimeout(() => fetchPrices(retryCount + 1), 4000);
-      return; // keep "loading" state while retrying
+      return; // keep "loading" status while retrying
     }
     setStatus("error");
     document.getElementById("priceBody").innerHTML =
@@ -1317,6 +1339,50 @@ async function loadExtendedItems() {
   }
 }
 
+// ---------- MANUAL REFRESH ----------
+
+/**
+ * Called exclusively by the ↻ button click.
+ * Separated from fetchPrices() so the MouseEvent is never passed as retryCount.
+ * Always busts the price cache so the API is hit fresh regardless of TTL.
+ */
+function manualRefresh() {
+  // Prevent double-fire while already loading
+  if (_fetchInFlight) return;
+
+  // 1. Bust the price/history cache so apiFetch goes to the network
+  bustPriceCache();
+
+  // 2. Animate the button (spin once)
+  const btn = document.getElementById("refreshBtn");
+  if (btn) {
+    btn.classList.add("refreshing");
+    btn.disabled = true;
+    // Re-enable after animation
+    setTimeout(() => {
+      btn.classList.remove("refreshing");
+      btn.disabled = false;
+    }, 900);
+  }
+
+  // 3. Fetch fresh market prices
+  if (state.currentItemId) {
+    fetchPrices(0);
+  } else {
+    // No item selected yet — at least pulse the status pill so user knows it worked
+    setStatus("idle");
+  }
+
+  // 4. Also invalidate crafting tab data if it is currently visible
+  const craftSection = document.getElementById("tab-crafting");
+  if (craftSection && !craftSection.classList.contains("hidden")) {
+    window.refreshCraftingPrices?.();
+  }
+}
+
+// Expose so crafting.js or pvp.js can trigger a market refresh if needed
+window.manualRefresh = manualRefresh;
+
 function init() {
   initFuse();
   loadExtendedItems(); // async — extends search index in background
@@ -1371,14 +1437,16 @@ function init() {
     mobileInput.focus();
   });
 
-  // Server select
+  // Server select — bust price cache so switching regions always fetches fresh
   document.getElementById("server").addEventListener("change", (e) => {
     state.server = e.target.value;
-    if (state.currentItemId) fetchPrices();
+    bustPriceCache();
+    if (state.currentItemId) fetchPrices(0);
   });
 
-  // Refresh button
-  document.getElementById("refreshBtn").addEventListener("click", fetchPrices);
+  // Refresh button — calls manualRefresh() not fetchPrices() directly
+  // (fetchPrices used as a direct listener was receiving MouseEvent as retryCount)
+  document.getElementById("refreshBtn").addEventListener("click", manualRefresh);
 
 }
 

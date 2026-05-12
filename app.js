@@ -110,15 +110,113 @@ let fuse = null;
 function initFuse() {
   fuse = new Fuse(window.ALBION_ITEMS, {
     keys: [
-      { name: "name", weight: 0.7 },
-      { name: "id",   weight: 0.3 },
+      { name: "name", weight: 0.75 },
+      { name: "id",   weight: 0.25 },
     ],
-    threshold:         0.42,
-    includeMatches:    true,
-    includeScore:      true,
-    ignoreLocation:    true,
-    minMatchCharLength: 1,
+    threshold:          0.35,   // tighter — reduces noise from irrelevant results
+    includeMatches:     true,
+    includeScore:       true,
+    ignoreLocation:     true,
+    minMatchCharLength: 2,
+    distance:           120,
   });
+}
+
+// ---------- SEARCH HELPERS ----------
+
+/**
+ * Parse a raw search query into a clean search term + optional tier/enchant hint.
+ * Examples:  "T8 sword"  → { q:"sword",  tier:"T8", enchant:null }
+ *            "sword t5"  → { q:"sword",  tier:"T5", enchant:null }
+ *            "cape +2"   → { q:"cape",   tier:null, enchant:"2"  }
+ *            "t6.3 bag"  → { q:"bag",    tier:"T6", enchant:"3"  }
+ */
+function parseSearchQuery(raw) {
+  let q = raw.trim();
+  let tier = null, enchant = null;
+
+  // Tier: T2–T8, t2–t8, or standalone digit 2–8
+  const tierRx = /\bT?([2-8])\b/i;
+  const tm = tierRx.exec(q);
+  if (tm) { tier = "T" + tm[1]; q = q.replace(tm[0], "").trim(); }
+
+  // Enchant: +0 to +4, .0 to .4, @0 to @4
+  const enchRx = /[+@.]([0-4])\b/;
+  const em = enchRx.exec(q);
+  if (em) { enchant = em[1]; q = q.replace(em[0], "").trim(); }
+
+  return { q: q || raw.trim(), tier, enchant };
+}
+
+/**
+ * Run Fuse search with smart ranking:
+ *   1. Exact name match
+ *   2. Name starts-with query
+ *   3. Fuse relevance score (lower = better)
+ * Applies optional tier and enchant pre-filter.
+ * Returns deduplicated, ranked item results.
+ */
+function smartSearch(rawQuery) {
+  const { q, tier, enchant } = parseSearchQuery(rawQuery);
+  const ql = q.toLowerCase();
+
+  // Run fuse on the clean query
+  let results = fuse ? fuse.search(q, { limit: 80 }) : [];
+
+  // Tier filter
+  if (tier) {
+    results = results.filter(r => {
+      const base = r.item.id.split("@")[0];
+      return base.startsWith(tier + "_");
+    });
+  }
+
+  // Enchant filter
+  if (enchant) {
+    results = results.filter(r => {
+      const enc = r.item.id.includes("@") ? r.item.id.split("@")[1] : "0";
+      return enc === enchant;
+    });
+  }
+
+  // Deduplicate by item ID
+  const seen = new Set();
+  results = results.filter(r => {
+    if (seen.has(r.item.id)) return false;
+    seen.add(r.item.id);
+    return true;
+  });
+
+  // Re-rank: exact → prefix → fuse score
+  results.sort((a, b) => {
+    const an = a.item.name.toLowerCase();
+    const bn = b.item.name.toLowerCase();
+    if (an === ql && bn !== ql) return -1;
+    if (bn === ql && an !== ql) return  1;
+    const as = an.startsWith(ql), bs = bn.startsWith(ql);
+    if (as && !bs) return -1;
+    if (bs && !as) return  1;
+    return (a.score || 0) - (b.score || 0);
+  });
+
+  return results;
+}
+
+/** True if item ID has a crafting recipe registered by crafting.js */
+function isCraftable(itemId) {
+  const base = itemId.split("@")[0];
+  return !!(window.CRAFTING_RECIPES?.[base]);
+}
+
+/** Tier text from item ID, e.g. "T4" */
+function tierOf2(id) {
+  const m = /^T(\d)/.exec(id);
+  return m ? "T" + m[1] : null;
+}
+
+/** Enchant level from item ID, e.g. "@2" → "+2"; base items → "+0" */
+function enchantLabel(id) {
+  return id.includes("@") ? "+" + id.split("@")[1] : "+0";
 }
 
 // ---------- ITEM HELPERS ----------
@@ -259,7 +357,7 @@ let searchDebounce = null;
 
 function onSearchInput(query, dropdownEl) {
   clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => renderDropdown(query.trim(), dropdownEl), 120);
+  searchDebounce = setTimeout(() => renderDropdown(query.trim(), dropdownEl), 80);
 
   // Show/hide clear button
   const clearBtn = document.getElementById("searchClearBtn");
@@ -285,7 +383,7 @@ function renderDropdown(query, dropdownEl) {
       .filter(Boolean);
     sections.push({ label: "Popular Items", items: popular });
   } else {
-    const results = fuse.search(query, { limit: 36 });
+    const results = smartSearch(query);
     if (!results.length) {
       dropdownEl.innerHTML = `<div class="dd-empty">No results for "<strong>${escHtml(query)}</strong>".<br/>Try a raw ID like <code>T6_BAG</code> or <code>T8_2H_BOW</code>.</div>`;
       openDropdown(dropdownEl);
@@ -295,7 +393,7 @@ function renderDropdown(query, dropdownEl) {
     for (const r of results) {
       const cat = categorize(r.item.id);
       if (!grouped[cat]) grouped[cat] = [];
-      if (grouped[cat].length < 5) grouped[cat].push(r);
+      if (grouped[cat].length < 8) grouped[cat].push(r);
     }
     for (const [cat, catResults] of Object.entries(grouped)) {
       sections.push({
@@ -321,14 +419,21 @@ function renderDropdown(query, dropdownEl) {
       const idHtml    = highlight(item.id,   item.matches, "id");
       const insights  = getItemInsights(item);
 
+      const tier    = tierOf2(item.id);
+      const enc     = enchantLabel(item.id);
+      const craft   = query && isCraftable(item.id);   // only show craftable badge on search results
+      const tierPill    = tier ? `<span class="dd-tier-pill">${tier}</span>` : "";
+      const enchPill    = enc !== "+0" ? `<span class="dd-enchant-pill">${enc}</span>` : "";
+      const craftBadge  = craft ? `<span class="dd-craft-badge">⚒</span>` : "";
+
       const el = document.createElement("div");
       el.className = "dd-item";
       el.dataset.idx = globalIdx;
       el.innerHTML = `
         <img class="dd-icon" src="${iconUrl(item.id)}" alt="" loading="lazy" onerror="onIconError(this)" />
         <div class="dd-info">
-          <div class="dd-name">${nameHtml}</div>
-          <div class="dd-meta">${idHtml}</div>
+          <div class="dd-name">${nameHtml}${craftBadge}</div>
+          <div class="dd-meta">${tierPill}${enchPill}<span>${idHtml}</span></div>
         </div>
         <div class="dd-badges">
           ${insights.map(i => `<span class="badge ${i.cls}">${i.label}</span>`).join("")}
@@ -1262,6 +1367,29 @@ function selectItem(id, name) {
   document.getElementById("heroName").textContent = name || id;
   document.getElementById("heroId").textContent   = id;
   document.getElementById("heroInsights").innerHTML = "";
+
+  // Craftable shortcut button in hero
+  if (isCraftable(id)) {
+    const base = id.split("@")[0];
+    const craftBtn = document.createElement("button");
+    craftBtn.className = "badge badge-gold craft-hero-btn";
+    craftBtn.style.cssText = "cursor:pointer;padding:4px 10px;font-size:11px;";
+    craftBtn.title = "Open in Crafting tab";
+    craftBtn.textContent = "⚒ View Recipe";
+    craftBtn.addEventListener("click", () => {
+      // Switch to crafting tab and load the recipe
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
+      const craftTab = document.querySelector(".tab-btn[data-tab='crafting']");
+      const craftSection = document.getElementById("tab-crafting");
+      if (craftTab) craftTab.classList.add("active");
+      if (craftSection) craftSection.classList.remove("hidden");
+      window.initCraftingTab?.();
+      // Try to auto-select the recipe after crafting tab initialises
+      setTimeout(() => window.selectCraftingItem?.(base), 300);
+    });
+    document.getElementById("heroInsights").appendChild(craftBtn);
+  }
 
   // Keep search input in sync
   const sinp = document.getElementById("searchInput");

@@ -729,12 +729,15 @@ function buildFilterBar() {
   );
   addSection("Cities", citiesEl);
 
-  // Tiers
-  const tiersEl = buildChips(TIERS, state.selectedTiers, (t) => ({ label: t }), () => fetchPrices());
+  // Tiers — single-select (radio): clicking T8 deselects T4 automatically.
+  // Multi-select caused both T4+T8 to be active, making getHeroItemId() always
+  // return T4 (lowest tier) regardless of which chip the user actually clicked.
+  const tiersEl = buildChips(TIERS, state.selectedTiers, (t) => ({ label: t }), () => fetchPrices(), true);
   addSection("Tier", tiersEl);
 
-  // Enchant
-  const enchEl = buildChips(ENCHANTS, state.selectedEnchants, (e) => ({ label: "+" + e }), () => fetchPrices());
+  // Enchant — single-select (radio): only one enchant level active at a time,
+  // matching the tier chip behaviour. Prevents hero/badge showing stale enchant.
+  const enchEl = buildChips(ENCHANTS, state.selectedEnchants, (e) => ({ label: "+" + e }), () => fetchPrices(), true);
   addSection("Enchant", enchEl);
 
   // Quality
@@ -766,16 +769,23 @@ function buildFilterBar() {
   });
 }
 
-function buildChips(values, selectedSet, getOpts, onChange) {
+/**
+ * Build a row of toggle chips.
+ * @param {boolean} singleSelect  When true: clicking a chip deselects all
+ *   others first (radio / single-select behaviour). When false (default):
+ *   each chip toggles independently (checkbox / multi-select behaviour).
+ */
+function buildChips(values, selectedSet, getOpts, onChange, singleSelect = false) {
   const wrap = document.createElement("div");
   wrap.className = "flex gap-1.5 items-center";
-  for (const v of values) {
-    const opts  = getOpts(v);
-    const chip  = document.createElement("div");
+
+  // Collect all chip elements first so single-select handlers can reference siblings
+  const chipEls = values.map((v) => {
+    const opts = getOpts(v);
+    const chip = document.createElement("div");
     chip.className = "chip" + (selectedSet.has(v) ? " on" : "");
     chip.setAttribute("role", "button");
-    if (opts.extraAttrs) chip.setAttribute("style", chip.getAttribute("style") || "");
-    // parse extra attrs manually
+
     if (opts.extraAttrs) {
       const dummy = document.createElement("div");
       dummy.innerHTML = `<div ${opts.extraAttrs}></div>`;
@@ -783,14 +793,30 @@ function buildChips(values, selectedSet, getOpts, onChange) {
       for (const attr of d.attributes) chip.setAttribute(attr.name, attr.value);
     }
     chip.textContent = opts.label;
+    return chip;
+  });
+
+  // Attach click handlers after all chips exist (required for single-select cross-reference)
+  chipEls.forEach((chip, i) => {
+    const v = values[i];
     chip.addEventListener("click", () => {
-      if (selectedSet.has(v)) selectedSet.delete(v);
-      else selectedSet.add(v);
-      chip.classList.toggle("on");
+      if (singleSelect) {
+        // Radio behaviour: clear every other chip, select only this one
+        selectedSet.clear();
+        chipEls.forEach(c => c.classList.remove("on"));
+        selectedSet.add(v);
+        chip.classList.add("on");
+      } else {
+        // Checkbox behaviour (cities, enchants, quality)
+        if (selectedSet.has(v)) selectedSet.delete(v);
+        else selectedSet.add(v);
+        chip.classList.toggle("on");
+      }
       onChange();
     });
     wrap.appendChild(chip);
-  }
+  });
+
   return wrap;
 }
 
@@ -1629,6 +1655,27 @@ function selectItem(id, name) {
   state.currentItemName = name || id;
   saveRecent(id, name || id);
 
+  // ── Sync tier + enchant filter chips to the clicked search result ──────────
+  // This is the global fix: no matter which item/tier/enchant the user clicks
+  // in the dropdown (bags, weapons, armor, resources, mounts, food, potions —
+  // any tier T2–T8, any enchant .0–.4), the filter bar chips immediately
+  // reflect that selection so hero image, name, and API request all agree.
+  //
+  // Examples:
+  //   T6_MAIN_SWORD@2  → selectedTiers={"T6"}, selectedEnchants={"2"}
+  //   T8_BAG           → selectedTiers={"T8"}, selectedEnchants={"0"}
+  //   T4_MOUNT_HORSE   → selectedTiers={"T4"}, selectedEnchants={"0"}
+  //   UNIQUE_TROPHY_*  → no tier prefix → state left unchanged (non-tiered)
+  const baseId = id.split("@")[0];
+  const tierM  = /^T(\d)/.exec(baseId);
+  if (tierM) {
+    // Tiered item: snap both chip groups to exactly what the user clicked
+    state.selectedTiers    = new Set(["T" + tierM[1]]);
+    state.selectedEnchants = new Set([id.includes("@") ? id.split("@")[1] : "0"]);
+    buildFilterBar(); // rebuild the DOM chips so visual state matches
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   document.getElementById("emptyState").classList.add("hidden");
   ["citySection","bestSection","bmRoutesSection","tableSection","itemHero"].forEach(s =>
     document.getElementById(s)?.classList.remove("hidden")
@@ -1639,8 +1686,8 @@ function selectItem(id, name) {
   heroImg.onerror = function() { this.onerror = null; this.src = FALLBACK_ICON; };
   document.getElementById("heroInsights").innerHTML = "";
 
-  // Apply hero image + name immediately using the tier-aware helper, so the
-  // correct tier/enchant is shown right away (no flash of the raw search-result tier).
+  // Apply hero image + name immediately — now always correct because
+  // selectedTiers/selectedEnchants already reflect the clicked item above.
   updateHeroForCurrentTier();
 
   // Keep search input in sync with the display name (may differ from raw `name` arg)

@@ -1792,4 +1792,7 @@ async function initGoldTab() {
       </div>
       <p class="text-xs text-slate-700 mt-3">Gold prices via <a href="https://www.albion-online-data.com" class="underline hover:text-slate-500" target="_blank">Albion Online Data Project</a>.</p>
     `;
-  } catch 
+  } catch (e) {
+    host.innerHTML = `<div class="text-red-400 py-8 text-center text-sm">Failed to load gold prices.</div>`;
+  }
+}

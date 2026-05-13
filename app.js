@@ -1720,10 +1720,12 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("active");
       document.querySelectorAll(".tab-section").forEach(s => s.classList.add("hidden"));
       document.getElementById("tab-" + tab)?.classList.remove("hidden");
-      if (tab === "crafting") window.initCraftingTab?.();
-      if (tab === "scanner")  window.initScannerTab?.();
-      if (tab === "gold")     initGoldTab();
-      if (tab === "pvp")      window.initPvpTab?.();
+      if (tab === "crafting")  window.initCraftingTab?.();
+      if (tab === "scanner")   window.initScannerTab?.();
+      if (tab === "routes")    window.initRoutesTab?.();
+      if (tab === "dashboard") window.initDashboardTab?.();
+      if (tab === "gold")      initGoldTab();
+      if (tab === "pvp")       window.initPvpTab?.();
     });
   });
 });
@@ -1790,7 +1792,4 @@ async function initGoldTab() {
       </div>
       <p class="text-xs text-slate-700 mt-3">Gold prices via <a href="https://www.albion-online-data.com" class="underline hover:text-slate-500" target="_blank">Albion Online Data Project</a>.</p>
     `;
-  } catch (e) {
-    host.innerHTML = `<div class="text-red-400 py-8 text-center text-sm">Failed to load gold prices.</div>`;
-  }
-}
+  } catch 

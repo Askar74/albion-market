@@ -30,14 +30,101 @@ const GEAR_SLOTS = [
 ];
 
 let pvpState = {
-  mode         : "player",   // "player" | "guild"
-  selected     : null,       // { id, name, type }
-  events       : [],
-  filter       : "all",      // "all" | "kills" | "deaths"
-  cache        : new Map(),  // query → { ts, results } — 5-min TTL
-  suggestTimer : null,       // debounce handle for autocomplete
-  priceMap     : {},         // itemId → cheapest sell price (for loadout cost)
+  mode          : "player",   // "player" | "guild"
+  selected      : null,       // { id, name, type }
+  events        : [],
+  filter        : "all",      // "all" | "kills" | "deaths"
+  cache         : new Map(),  // query → { ts, results } — 5-min TTL
+  suggestTimer  : null,       // debounce handle for autocomplete
+  priceMap      : {},         // itemId → cheapest sell price (for loadout cost)
+  pollTimer     : null,       // auto-refresh interval handle
+  pollLastId    : null,       // newest EventId seen — detect new kills
+  newEventCount : 0,          // badge counter for new events
+  _pendingFresh : null,       // buffered fresh events waiting for user to accept
 };
+
+// ── Persistence (remember last searched player/guild) ───────────────
+
+const PVP_SAVE_KEY = "pvp_saved_entity";
+
+function pvpSaveEntity(name, type) {
+  try { localStorage.setItem(PVP_SAVE_KEY, JSON.stringify({ name, type, mode: pvpState.mode })); }
+  catch (_) {}
+}
+
+function pvpLoadSaved() {
+  try { const r = localStorage.getItem(PVP_SAVE_KEY); return r ? JSON.parse(r) : null; }
+  catch (_) { return null; }
+}
+
+// ── Auto-poll (60s background refresh for new kills / deaths) ────────
+
+function pvpStartPolling(id, name, type) {
+  pvpStopPolling();
+  pvpState.pollLastId    = pvpState.events.length ? pvpState.events[0].EventId : null;
+  pvpState.newEventCount = 0;
+
+  pvpState.pollTimer = setInterval(async () => {
+    try {
+      let fresh = [];
+      if (type === "player") {
+        const [kills, deaths] = await Promise.all([
+          pvpFetch(`/players/${id}/kills`,  "offset=0&limit=20"),
+          pvpFetch(`/players/${id}/deaths`, "offset=0&limit=20"),
+        ]);
+        fresh = [
+          ...(Array.isArray(kills)  ? kills  : []),
+          ...(Array.isArray(deaths) ? deaths : []),
+        ];
+      } else {
+        const data = await pvpFetch("/events", `guildId=${id}&offset=0&limit=51`);
+        fresh = Array.isArray(data) ? data : [];
+      }
+      fresh.sort((a, b) => new Date(b.TimeStamp) - new Date(a.TimeStamp));
+
+      const newestId = fresh.length ? fresh[0].EventId : null;
+      if (newestId && newestId !== pvpState.pollLastId) {
+        const known    = new Set(pvpState.events.map(e => e.EventId));
+        const newCount = fresh.filter(e => !known.has(e.EventId)).length;
+        if (newCount > 0) {
+          pvpState.newEventCount = newCount;
+          pvpState._pendingFresh = fresh;
+          pvpShowNewBanner(newCount);
+        }
+      }
+    } catch (_) {}
+  }, 60_000);
+}
+
+function pvpStopPolling() {
+  if (pvpState.pollTimer) { clearInterval(pvpState.pollTimer); pvpState.pollTimer = null; }
+}
+
+function pvpShowNewBanner(count) {
+  document.getElementById("pvpNewBanner")?.remove();
+  const label  = count === 1 ? "1 new event" : `${count} new events`;
+  const banner = document.createElement("div");
+  banner.id        = "pvpNewBanner";
+  banner.className = "pvp-new-banner";
+  banner.innerHTML = `
+    <span>⚔ ${label} since last check</span>
+    <button class="pvp-new-banner-btn" onclick="pvpAcceptFresh()">Refresh ↻</button>
+    <button class="pvp-new-banner-close" onclick="document.getElementById('pvpNewBanner')?.remove()">✕</button>
+  `;
+  document.getElementById("pvpResults")?.before(banner);
+}
+
+function pvpAcceptFresh() {
+  const fresh = pvpState._pendingFresh;
+  if (!fresh) return;
+  pvpState.events        = fresh;
+  pvpState.pollLastId    = fresh.length ? fresh[0].EventId : null;
+  pvpState._pendingFresh = null;
+  pvpState.newEventCount = 0;
+  document.getElementById("pvpNewBanner")?.remove();
+  renderPvpFeed();
+  fetchGearPrices(fresh);
+}
 
 // ── Core helpers ────────────────────────────────────────────────────
 
@@ -621,6 +708,9 @@ async function pvpSelectEntity(id, name, type) {
     renderPvpFeed();
     // Fetch gear prices in background — re-renders when ready
     fetchGearPrices(events);
+    // Save entity for next visit + start live polling
+    pvpSaveEntity(name, type);
+    pvpStartPolling(id, name, type);
   } catch (e) {
     pvpError(`Failed to load data: ${e.message}`);
   }
@@ -632,6 +722,7 @@ function setPvpFilter(f) {
 }
 
 function setPvpMode(mode) {
+  pvpStopPolling();
   pvpState.mode     = mode;
   pvpState.selected = null;
   pvpState.events   = [];
@@ -654,6 +745,7 @@ function setPvpMode(mode) {
 }
 
 function pvpClearSearch() {
+  pvpStopPolling();
   const input    = document.getElementById("pvpSearchInput");
   const clearBtn = document.getElementById("pvpClearBtn");
   if (input)    { input.value = ""; input.focus(); }
@@ -754,6 +846,26 @@ function initPvpTab() {
         pvpCloseSuggestions();
       }
     });
+
+    // ── Auto-restore last searched player / guild ─────────────────────
+    const saved = pvpLoadSaved();
+    if (saved && saved.name) {
+      // Switch mode if needed (e.g. was searching a guild last time)
+      if (saved.mode && saved.mode !== pvpState.mode) {
+        const modeBtn = document.getElementById(
+          saved.mode === "guild" ? "pvpModeGuild" : "pvpModePlayer"
+        );
+        modeBtn?.click();
+      }
+      const inp2 = document.getElementById("pvpSearchInput");
+      const clr2 = document.getElementById("pvpClearBtn");
+      if (inp2) {
+        inp2.value = saved.name;
+        if (clr2) clr2.style.display = "";
+        // Small delay so the tab renders fully before triggering the search
+        setTimeout(() => pvpSearch(saved.name), 120);
+      }
+    }
 
     return;
   }

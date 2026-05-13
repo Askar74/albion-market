@@ -1771,6 +1771,30 @@ td.loading-cell {
 .dash-import-replace:hover { background: rgba(248,113,113,0.18); }
 .dash-import-ignore:hover  { color: #94a3b8; }
 
+/* ── PvP new-events notification banner ── */
+.pvp-new-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.35);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+  font-size: 13px; color: #fca5a5; animation: pvpBannerIn 0.25s ease;
+}
+@keyframes pvpBannerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.pvp-new-banner span { flex: 1; font-weight: 600; }
+.pvp-new-banner-btn {
+  background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.4);
+  color: #fca5a5; border-radius: 7px; padding: 4px 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+}
+.pvp-new-banner-btn:hover { background: rgba(239,68,68,0.32); }
+.pvp-new-banner-close {
+  background: transparent; border: none; color: #64748b;
+  font-size: 14px; cursor: pointer; padding: 2px 6px; line-height: 1;
+}
+.pvp-new-banner-close:hover { color: #94a3b8; }
+
 /* ── Crafting custom qty input ── */
 .qty-custom-input {
   width: 80px; height: 28px; background: #10151f; border: 1px solid #1e2a3a;

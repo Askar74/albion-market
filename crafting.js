@@ -309,25 +309,48 @@ function efficiencyScore(row) {
 }
 function scoreColor(n) { return n>=70?"#4ade80":n>=40?"#fbbf24":"#f87171"; }
 
-// ---- AI tags ----
+// ---- AI tags (v2 — smarter signals) ----
 function computeAITags(recipe, cityRows) {
-  const profitable = cityRows.filter(r => r.profit!=null&&r.profit>0);
-  if (!profitable.length) return [{ label:"No profit", cls:"badge-red" }];
+  const profitable = cityRows.filter(r => r.profit != null && r.profit > 0);
+  if (!profitable.length) return [{ label: "No profit", cls: "badge-red" }];
   const best = profitable[0];
   const tags = [];
-  const roi = best.profitPct||0;
-  if (roi>25)      tags.push({ label:"Best ROI",        cls:"badge-gold"   });
-  else if (roi>10) tags.push({ label:"Good ROI",         cls:"badge-green"  });
-  const freshCities = cityRows.filter(r => ageMinsCraft(r.sellAge)<30).length;
-  if (freshCities>=4)      tags.push({ label:"Fast-selling",    cls:"badge-blue"   });
-  else if (freshCities>=2) tags.push({ label:"Active Market",   cls:"badge-blue"   });
-  const activeCities = cityRows.filter(r => r.sellPrice>0).length;
-  if (activeCities<=2)     tags.push({ label:"Low Competition", cls:"badge-orange" });
-  if ((best.profitPerMin||0)>200000) tags.push({ label:"High Throughput", cls:"badge-purple" });
+
+  // ── ROI ──
+  const roi = best.profitPct || 0;
+  if (roi > 25)      tags.push({ label: "Best ROI",    cls: "badge-gold"   });
+  else if (roi > 10) tags.push({ label: "Good ROI",    cls: "badge-green"  });
+
+  // ── Market freshness / velocity ──
+  const freshCities = cityRows.filter(r => ageMinsCraft(r.sellAge) < 30).length;
+  if (freshCities >= 4)      tags.push({ label: "Fast-selling",  cls: "badge-blue" });
+  else if (freshCities >= 2) tags.push({ label: "Active Market", cls: "badge-blue" });
+
+  // ── Low Competition (age-based + coverage-based) ──
+  // Stale listings = few active sellers refreshing orders → low competition
+  const citiesWithSell = cityRows.filter(r => r.sellPrice > 0);
+  const avgSellAge = citiesWithSell.length
+    ? citiesWithSell.reduce((s, r) => s + ageMinsCraft(r.sellAge), 0) / citiesWithSell.length
+    : Infinity;
+  const isStale      = avgSellAge > 120;   // avg sell listing older than 2 hours
+  const thinCoverage = citiesWithSell.length <= 2;
+  if (isStale || thinCoverage) tags.push({ label: "Low Competition", cls: "badge-orange" });
+
+  // ── High Throughput (city coverage ≥ 5 = wide market volume) ──
+  const activeCityCount = citiesWithSell.length;
+  if (activeCityCount >= 5 || (best.profitPerMin || 0) > 200000)
+    tags.push({ label: "High Throughput", cls: "badge-purple" });
+
+  // ── Efficiency ──
   const score = efficiencyScore(best);
-  if (score>=80)           tags.push({ label:"Top Efficiency",  cls:"badge-green"  });
-  else if (score>=60)      tags.push({ label:"Efficient",       cls:"badge-slate"  });
-  return tags.slice(0, 3);
+  if (score >= 80)      tags.push({ label: "Top Efficiency", cls: "badge-green" });
+  else if (score >= 60) tags.push({ label: "Efficient",      cls: "badge-slate" });
+
+  // ── Niche Craft (high ROI but only 1-2 profitable cities = hidden gem) ──
+  if (profitable.length <= 2 && roi > 15 && !tags.find(t => t.label === "Low Competition"))
+    tags.push({ label: "Niche Craft", cls: "badge-orange" });
+
+  return tags.slice(0, 4); // show up to 4 tags
 }
 
 // ---- Price history fetch + SVG sparkline ----
@@ -675,6 +698,10 @@ function renderCalculator(recipeId, prices) {
         ${[1,10,100,1000].map(q => `
           <button class="qty-btn${craftState.craftQty === q ? " active" : ""}" data-qty="${q}">×${q.toLocaleString()}</button>
         `).join("")}
+        <input id="qtyCustom" type="number" min="1" max="100000" placeholder="Custom"
+          value="${![1,10,100,1000].includes(craftState.craftQty) ? craftState.craftQty : ""}"
+          class="qty-custom-input"
+          title="Enter any quantity" />
       </div>
       <span class="text-xs text-slate-600 ml-auto">
         Tax: <span class="text-albion">${craftState.taxPct}%</span>
@@ -757,9 +784,26 @@ function renderCalculator(recipeId, prices) {
   panel.querySelectorAll(".qty-btn[data-qty]").forEach(btn => {
     btn.addEventListener("click", () => {
       craftState.craftQty = parseInt(btn.dataset.qty);
+      const customInput = panel.querySelector("#qtyCustom");
+      if (customInput) customInput.value = "";
       renderCalculator(recipeId, prices);
     });
   });
+
+  // Wire custom quantity input
+  const qtyCustom = panel.querySelector("#qtyCustom");
+  if (qtyCustom) {
+    qtyCustom.addEventListener("change", () => {
+      const v = parseInt(qtyCustom.value);
+      if (v > 0 && v <= 100000) {
+        craftState.craftQty = v;
+        renderCalculator(recipeId, prices);
+      }
+    });
+    qtyCustom.addEventListener("keydown", e => {
+      if (e.key === "Enter") qtyCustom.dispatchEvent(new Event("change"));
+    });
+  }
 
   // Wire sourcing mode buttons
   panel.querySelectorAll(".qty-btn[data-src]").forEach(btn => {

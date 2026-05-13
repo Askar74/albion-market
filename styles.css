@@ -1743,6 +1743,58 @@ td.loading-cell {
 }
 .dash-route-remove:hover { color: #f87171; }
 
+/* ── Dashboard share button ── */
+.dash-share-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: #7dd3fc;
+  background: rgba(125,211,252,0.08); border: 1px solid rgba(125,211,252,0.25);
+  border-radius: 8px; padding: 5px 12px; cursor: pointer; transition: all 0.15s;
+}
+.dash-share-btn:hover { background: rgba(125,211,252,0.15); border-color: rgba(125,211,252,0.4); }
+
+/* ── Watchlist import banner ── */
+.dash-import-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.30);
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;
+}
+.dash-import-text { font-size: 13px; color: #c7d2fe; flex: 1 1 200px; }
+.dash-import-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.dash-import-btn {
+  font-size: 12px; font-weight: 600; border-radius: 8px; padding: 5px 12px;
+  cursor: pointer; border: 1px solid; transition: all 0.15s;
+}
+.dash-import-merge   { color: #4ade80; background: rgba(74,222,128,0.08);  border-color: rgba(74,222,128,0.30);  }
+.dash-import-replace { color: #f87171; background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.30); }
+.dash-import-ignore  { color: #64748b; background: transparent; border-color: #2a3a4e; }
+.dash-import-merge:hover   { background: rgba(74,222,128,0.18);  }
+.dash-import-replace:hover { background: rgba(248,113,113,0.18); }
+.dash-import-ignore:hover  { color: #94a3b8; }
+
+/* ── Crafting custom qty input ── */
+.qty-custom-input {
+  width: 80px; height: 28px; background: #10151f; border: 1px solid #1e2a3a;
+  border-radius: 6px; color: #e2e8f0; font-size: 12px; font-weight: 600;
+  text-align: center; outline: none; padding: 0 8px; transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+.qty-custom-input::-webkit-inner-spin-button,
+.qty-custom-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.qty-custom-input:focus { border-color: rgba(229,178,93,0.5); }
+.qty-custom-input::placeholder { color: #3a4a5e; font-weight: 400; }
+
+/* PvP loadout cost label */
+.pvp-loadout-cost {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: #e5b25d;
+  background: rgba(229,178,93,0.10); border: 1px solid rgba(229,178,93,0.20);
+  border-radius: 6px; padding: 2px 8px; margin-top: 6px;
+  letter-spacing: 0.02em;
+}
+.pvp-loadout-cost-right {
+  float: right; margin-top: 6px;
+}
+
 /* Toast notification */
 .dash-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px);

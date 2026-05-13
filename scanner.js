@@ -756,4 +756,27 @@ window.scanViewItem = function(itemId, itemName) {
   if (window.selectItem) window.selectItem(itemId, itemName);
 };
 
-// ── INIT ──────────────────────────────────────────�
+// ── INIT ──────────────────────────────────────────
+
+window.initScannerTab = function() {
+  const host = document.getElementById("tab-scanner");
+  if (!host || host.dataset.loaded) return;
+  host.dataset.loaded = "1";
+  renderScannerTab();
+};
+
+// Expose for other modules
+window.SCAN_ITEMS   = SCAN_ITEMS;
+window.scannerState = scannerState;
+
+
+window.initScannerTab = function() {
+  const host = document.getElementById("tab-scanner");
+  if (!host || host.dataset.loaded) return;
+  host.dataset.loaded = "1";
+  renderScannerTab();
+};
+
+// Expose for other modules
+window.SCAN_ITEMS   = SCAN_ITEMS;
+window.scannerState = scannerState;

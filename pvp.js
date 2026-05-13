@@ -36,6 +36,7 @@ let pvpState = {
   filter       : "all",      // "all" | "kills" | "deaths"
   cache        : new Map(),  // query → { ts, results } — 5-min TTL
   suggestTimer : null,       // debounce handle for autocomplete
+  priceMap     : {},         // itemId → cheapest sell price (for loadout cost)
 };
 
 // ── Core helpers ────────────────────────────────────────────────────
@@ -74,6 +75,85 @@ async function pvpFetch(apiPath, query = "") {
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// ── Loadout Cost Engine ──────────────────────────────────────────────
+
+/**
+ * Extract every unique gear item ID from a list of kill events.
+ * Covers all 10 gear slots for both killer and victim.
+ */
+function extractGearIds(events) {
+  const ids = new Set();
+  for (const ev of events) {
+    for (const side of [ev.Killer, ev.Victim]) {
+      if (!side?.Equipment) continue;
+      for (const slot of GEAR_SLOTS) {
+        const t = side.Equipment[slot]?.Type;
+        if (t) ids.add(t);
+      }
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Batch-fetch cheapest sell prices for all gear IDs.
+ * Stores results in pvpState.priceMap and triggers a re-render.
+ */
+async function fetchGearPrices(events) {
+  const ids = extractGearIds(events);
+  if (!ids.length) return;
+
+  const serverKey = pvpServer();
+  const base      = (window.API_BASES || {})[serverKey] || "https://europe.albion-online-data.com/api/v2";
+  // Black Market excluded — only buyer cities give real price signals
+  const cities    = "Caerleon,Bridgewatch,Lymhurst,Fort Sterling,Martlock,Thetford,Brecilien";
+
+  const BATCH = 25;
+  const map   = {};
+
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const chunk = ids.slice(i, i + BATCH);
+    const url   = `${base}/stats/prices/${chunk.join(",")}.json?locations=${encodeURIComponent(cities)}&qualities=1`;
+    try {
+      const rows = await (window.apiFetch ? window.apiFetch(url) : fetch(url).then(r => r.json()));
+      for (const r of (rows || [])) {
+        if (r.sell_price_min > 0) {
+          if (!map[r.item_id] || r.sell_price_min < map[r.item_id])
+            map[r.item_id] = r.sell_price_min;
+        }
+      }
+    } catch {}
+    if (i + BATCH < ids.length) await new Promise(r => setTimeout(r, 80));
+  }
+
+  pvpState.priceMap = map;
+  // Re-render the feed with prices now available
+  if (pvpState.events.length) renderPvpFeed();
+}
+
+/**
+ * Sum gear slot prices for one player's equipment.
+ * Returns null if fewer than 3 slots could be priced (not enough data).
+ */
+function calcLoadoutValue(equipment, priceMap) {
+  if (!equipment || !Object.keys(priceMap).length) return null;
+  let total = 0, priced = 0;
+  for (const slot of GEAR_SLOTS) {
+    const t = equipment[slot]?.Type;
+    if (!t) continue;
+    const p = priceMap[t] || 0;
+    if (p > 0) { total += p; priced++; }
+  }
+  return priced >= 3 ? total : null;
+}
+
+function pvpFmtSilver(n) {
+  if (!n) return "?";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (n >= 1_000)     return (n / 1_000).toFixed(0) + "k";
+  return n.toLocaleString();
 }
 
 // ── Search utilities ─────────────────────────────────────────────────
@@ -239,6 +319,14 @@ function killCard(ev, trackedId, trackedType) {
   const killer = ev.Killer || {};
   const victim = ev.Victim  || {};
 
+  // Loadout cost (shown if prices are loaded)
+  const killerVal = calcLoadoutValue(killer.Equipment, pvpState.priceMap);
+  const victimVal = calcLoadoutValue(victim.Equipment, pvpState.priceMap);
+  const killerCostHtml = killerVal != null
+    ? `<div class="pvp-loadout-cost">💰 ~${pvpFmtSilver(killerVal)} silver</div>` : "";
+  const victimCostHtml = victimVal != null
+    ? `<div class="pvp-loadout-cost pvp-loadout-cost-right">💰 ~${pvpFmtSilver(victimVal)} silver</div>` : "";
+
   const isKill  = trackedType === "guild"
     ? killer.GuildId === trackedId
     : killer.Id      === trackedId;
@@ -296,6 +384,7 @@ function killCard(ev, trackedId, trackedType) {
         <div class="pvp-pname${isKill ? " pvp-pname-tracked" : ""}">${killer.Name || "Unknown"}</div>
         ${killerGuild}
         ${gearStrip(killer.Equipment, false)}
+        ${killerCostHtml}
       </div>
 
       <!-- VS divider -->
@@ -309,6 +398,7 @@ function killCard(ev, trackedId, trackedType) {
         <div class="pvp-pname pvp-pname-right${isDeath ? " pvp-pname-tracked" : ""}">${victim.Name || "Unknown"}</div>
         ${victimGuild ? `<div class="pvp-pguild pvp-pguild-right">${victim.GuildName}${victim.AllianceTag ? ` [${victim.AllianceTag}]` : ""}</div>` : ""}
         ${gearStrip(victim.Equipment, true)}
+        ${victimCostHtml}
       </div>
 
     </div>
@@ -526,8 +616,11 @@ async function pvpSelectEntity(id, name, type) {
     }
     // Sort newest first
     events.sort((a, b) => new Date(b.TimeStamp) - new Date(a.TimeStamp));
-    pvpState.events = events;
+    pvpState.events  = events;
+    pvpState.priceMap = {}; // clear stale prices for new entity
     renderPvpFeed();
+    // Fetch gear prices in background — re-renders when ready
+    fetchGearPrices(events);
   } catch (e) {
     pvpError(`Failed to load data: ${e.message}`);
   }

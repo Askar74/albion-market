@@ -202,7 +202,10 @@ function renderDashboardTab() {
           <h2 class="dash-section-title">★ My Watchlist</h2>
           <p class="dash-section-sub">Add items to track live prices across all cities. Hit ★ on any Scanner result to add.</p>
         </div>
-        <button id="dashRefreshBtn" class="dash-refresh-btn" title="Refresh all prices">↻ Refresh</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="dashShareBtn" class="dash-share-btn" title="Copy shareable link">🔗 Share</button>
+          <button id="dashRefreshBtn" class="dash-refresh-btn" title="Refresh all prices">↻ Refresh</button>
+        </div>
       </div>
 
       <!-- Search to add items -->
@@ -268,6 +271,7 @@ function renderDashboardTab() {
   });
 
   document.getElementById("dashRefreshBtn")?.addEventListener("click", () => refreshWatchlistPrices());
+  document.getElementById("dashShareBtn")?.addEventListener("click", () => window.shareWatchlistUrl());
 
   document.getElementById("dashClearRoutes")?.addEventListener("click", () => {
     dashState.savedRoutes = [];
@@ -477,6 +481,107 @@ function updateScannerSummary() {
   `;
 }
 
+// ── SHAREABLE WATCHLIST URLS ──────────────────────────────────
+
+/**
+ * Encode the watchlist to a compact base64 string for URL sharing.
+ * Format: base64(JSON([[itemId, itemName], ...]))
+ */
+function encodeWatchlistParam(list) {
+  const compact = list.map(x => [x.itemId, x.itemName]);
+  try { return btoa(unescape(encodeURIComponent(JSON.stringify(compact)))); }
+  catch { return btoa(JSON.stringify(compact)); }
+}
+
+/**
+ * Decode a base64 watchlist param back to [{itemId, itemName}].
+ */
+function decodeWatchlistParam(str) {
+  try {
+    const raw = JSON.parse(decodeURIComponent(escape(atob(str))));
+    if (!Array.isArray(raw)) return null;
+    return raw.map(([itemId, itemName]) => ({ itemId: String(itemId), itemName: String(itemName) }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copy a shareable link to clipboard with the current watchlist encoded.
+ * The link uses the ?w= query param so recipients get prompted to import on load.
+ */
+window.shareWatchlistUrl = function() {
+  const list = dashState.watchlist;
+  if (!list.length) { showDashToast("Nothing in your watchlist to share"); return; }
+  const param = encodeWatchlistParam(list);
+  const url   = `${location.origin}${location.pathname}?w=${param}#tab-dashboard`;
+  navigator.clipboard.writeText(url).then(
+    () => showDashToast("📋 Share link copied to clipboard!"),
+    () => {
+      // Fallback: prompt
+      prompt("Copy this link:", url);
+    }
+  );
+};
+
+/**
+ * Check URL for ?w= param on init. If present, offer to import the watchlist.
+ */
+function checkWatchlistImportUrl() {
+  const params = new URLSearchParams(location.search);
+  const w = params.get("w");
+  if (!w) return;
+
+  const imported = decodeWatchlistParam(w);
+  if (!imported || !imported.length) return;
+
+  // Clean the URL so refresh doesn't re-prompt
+  const cleanUrl = location.pathname + location.hash;
+  history.replaceState(null, "", cleanUrl);
+
+  // Show an import banner inside the watchlist section
+  const banner = document.createElement("div");
+  banner.className = "dash-import-banner";
+  banner.innerHTML = `
+    <div class="dash-import-text">
+      📋 A shared watchlist with <strong>${imported.length} item${imported.length !== 1 ? "s" : ""}</strong> was found in this link.
+    </div>
+    <div class="dash-import-actions">
+      <button class="dash-import-btn dash-import-merge" id="dashImportMerge">Merge with mine</button>
+      <button class="dash-import-btn dash-import-replace" id="dashImportReplace">Replace mine</button>
+      <button class="dash-import-btn dash-import-ignore" id="dashImportIgnore">Ignore</button>
+    </div>`;
+
+  const watchlistEl = document.getElementById("dashWatchlist");
+  if (watchlistEl) watchlistEl.prepend(banner);
+
+  document.getElementById("dashImportMerge")?.addEventListener("click", () => {
+    let changed = 0;
+    for (const item of imported) {
+      if (!dashState.watchlist.some(x => x.itemId === item.itemId)) {
+        dashState.watchlist.push(item);
+        changed++;
+      }
+    }
+    saveWatchlist(dashState.watchlist);
+    banner.remove();
+    renderWatchlist();
+    showDashToast(`Added ${changed} new item${changed !== 1 ? "s" : ""} from shared list`);
+    refreshWatchlistPrices();
+  });
+
+  document.getElementById("dashImportReplace")?.addEventListener("click", () => {
+    dashState.watchlist = imported;
+    saveWatchlist(imported);
+    banner.remove();
+    renderWatchlist();
+    showDashToast(`Imported ${imported.length} items from shared list`);
+    refreshWatchlistPrices();
+  });
+
+  document.getElementById("dashImportIgnore")?.addEventListener("click", () => banner.remove());
+}
+
 // ── INIT ──────────────────────────────────────────────────────
 
 window.initDashboardTab = function() {
@@ -484,6 +589,8 @@ window.initDashboardTab = function() {
   if (!host || host.dataset.loaded) return;
   host.dataset.loaded = "1";
   renderDashboardTab();
+  // Check for shared watchlist URL
+  checkWatchlistImportUrl();
   // Kick off a price fetch immediately if watchlist has items
   if (dashState.watchlist.length) {
     refreshWatchlistPrices();
